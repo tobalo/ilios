@@ -1,9 +1,10 @@
 import { drizzle } from 'drizzle-orm/libsql';
 import { createClient } from '@libsql/client';
-import { documents, usage, jobQueue } from '../db/schema';
-import { eq, and, lt, sql, desc } from 'drizzle-orm';
+import { documents, usage, jobQueue, workers } from '../db/schema';
+import { eq, and, lt, sql, desc, notInArray, isNotNull } from 'drizzle-orm';
 import { createId } from '@paralleldrive/cuid2';
 import * as path from 'path';
+import * as os from 'os';
 
 export class DatabaseService {
   public db;
@@ -161,29 +162,125 @@ export class DatabaseService {
     return id;
   }
 
-  async getNextJob() {
-    const [job] = await this.db.select()
-      .from(jobQueue)
-      .where(
-        and(
-          eq(jobQueue.status, 'pending'),
-          sql`${jobQueue.scheduledAt} <= unixepoch()`
+  // Atomically claim a job for a specific worker
+  async claimNextJob(workerId: string) {
+    // Use a transaction to ensure atomicity
+    const job = await this.db.transaction(async (tx) => {
+      // Find next available job
+      const [availableJob] = await tx.select()
+        .from(jobQueue)
+        .where(
+          and(
+            eq(jobQueue.status, 'pending'),
+            sql`${jobQueue.scheduledAt} <= unixepoch()`
+          )
         )
-      )
-      .orderBy(desc(jobQueue.priority), jobQueue.scheduledAt)
-      .limit(1);
-    
-    if (job) {
-      await this.db.update(jobQueue)
+        .orderBy(desc(jobQueue.priority), jobQueue.scheduledAt)
+        .limit(1);
+      
+      if (!availableJob) return null;
+      
+      // Try to claim it atomically
+      const [claimedJob] = await tx.update(jobQueue)
         .set({
           status: 'processing',
+          workerId: workerId,
           startedAt: new Date(),
-          attempts: job.attempts + 1,
+          attempts: availableJob.attempts + 1,
         })
-        .where(eq(jobQueue.id, job.id));
-    }
+        .where(
+          and(
+            eq(jobQueue.id, availableJob.id),
+            eq(jobQueue.status, 'pending'), // Double-check it's still pending
+          )
+        )
+        .returning();
+      
+      return claimedJob;
+    });
     
     return job;
+  }
+
+  // Clean up jobs from workers that no longer exist
+  async cleanupOrphanedJobs() {
+    // Get all active worker IDs
+    const activeWorkers = await this.db.select({ id: workers.id })
+      .from(workers)
+      .where(eq(workers.status, 'active'));
+    
+    const activeWorkerIds = activeWorkers.map(w => w.id);
+    
+    // Reset jobs assigned to non-existent workers
+    const result = await this.db.update(jobQueue)
+      .set({
+        status: 'pending',
+        workerId: null,
+        startedAt: null,
+      })
+      .where(
+        and(
+          eq(jobQueue.status, 'processing'),
+          activeWorkerIds.length > 0 
+            ? notInArray(jobQueue.workerId, activeWorkerIds)
+            : isNotNull(jobQueue.workerId)
+        )
+      )
+      .returning();
+    
+    if (result.length > 0) {
+      console.log(`Reset ${result.length} orphaned jobs back to pending status`);
+    }
+    
+    return result.length;
+  }
+
+  // Register a worker
+  async registerWorker(workerId: string, pid: number, hostname: string) {
+    await this.db.insert(workers)
+      .values({
+        id: workerId,
+        pid,
+        hostname,
+        status: 'active',
+      })
+      .onConflictDoUpdate({
+        target: workers.id,
+        set: {
+          pid,
+          hostname,
+          status: 'active',
+          lastHeartbeat: new Date(),
+        },
+      });
+  }
+
+  // Update worker heartbeat
+  async updateWorkerHeartbeat(workerId: string) {
+    await this.db.update(workers)
+      .set({ lastHeartbeat: new Date() })
+      .where(eq(workers.id, workerId));
+  }
+
+  // Mark worker as stopping/dead
+  async updateWorkerStatus(workerId: string, status: 'stopping' | 'dead') {
+    await this.db.update(workers)
+      .set({ status })
+      .where(eq(workers.id, workerId));
+    
+    // Release any jobs this worker was processing
+    await this.db.update(jobQueue)
+      .set({
+        status: 'pending',
+        workerId: null,
+        startedAt: null,
+      })
+      .where(
+        and(
+          eq(jobQueue.workerId, workerId),
+          eq(jobQueue.status, 'processing')
+        )
+      );
   }
 
   async getNextJobs(limit: number) {

@@ -72,6 +72,7 @@ const setup = async () => {
       payload TEXT,
       result TEXT,
       error TEXT,
+      worker_id TEXT,
       scheduled_at INTEGER NOT NULL DEFAULT (unixepoch()),
       started_at INTEGER,
       completed_at INTEGER,
@@ -82,6 +83,22 @@ const setup = async () => {
   await db.run(sql`CREATE INDEX IF NOT EXISTS job_status_idx ON job_queue(status)`);
   await db.run(sql`CREATE INDEX IF NOT EXISTS scheduled_at_idx ON job_queue(scheduled_at)`);
   await db.run(sql`CREATE INDEX IF NOT EXISTS priority_idx ON job_queue(priority)`);
+  await db.run(sql`CREATE INDEX IF NOT EXISTS worker_idx ON job_queue(worker_id)`);
+
+  // Create workers table
+  await db.run(sql`
+    CREATE TABLE IF NOT EXISTS workers (
+      id TEXT PRIMARY KEY,
+      pid INTEGER NOT NULL,
+      hostname TEXT NOT NULL,
+      started_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      last_heartbeat INTEGER NOT NULL DEFAULT (unixepoch()),
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'stopping', 'dead'))
+    )
+  `);
+
+  await db.run(sql`CREATE INDEX IF NOT EXISTS worker_status_idx ON workers(status)`);
+  await db.run(sql`CREATE INDEX IF NOT EXISTS heartbeat_idx ON workers(last_heartbeat)`);
 
   console.log('Database setup complete!');
 };

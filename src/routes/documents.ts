@@ -4,6 +4,8 @@ import { DatabaseService } from '../services/database';
 import { S3Service } from '../services/s3';
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1GB
+const LARGE_FILE_THRESHOLD = 10 * 1024 * 1024; // 10MB - Use streaming for files larger than this
+const MULTIPART_THRESHOLD = 50 * 1024 * 1024; // 50MB - Use multipart upload for files larger than this
 
 const uploadSchema = z.object({
   retentionDays: z.number().min(1).max(3650).optional(),
@@ -11,6 +13,107 @@ const uploadSchema = z.object({
 
 export function createDocumentRoutes(db: DatabaseService, s3: S3Service) {
   const app = new Hono();
+
+  // Generate presigned upload URL for direct client uploads
+  app.post('/upload-url', async (c) => {
+    try {
+      const body = await c.req.json();
+      const { fileName, fileSize, mimeType } = body;
+      
+      if (!fileName || !fileSize) {
+        return c.json({ error: 'fileName and fileSize are required' }, 400);
+      }
+      
+      if (fileSize > MAX_FILE_SIZE) {
+        return c.json({ error: `File size exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit` }, 400);
+      }
+      
+      const s3Key = s3.generateKey(fileName);
+      
+      // Create document record
+      const documentId = await db.createDocument({
+        fileName,
+        mimeType: mimeType || 'application/octet-stream',
+        fileSize,
+        s3Key,
+        userId: undefined, // Would be set by auth middleware
+        apiKey: undefined, // Would be set by auth middleware
+        retentionDays: body.retentionDays,
+      });
+      
+      // Generate presigned URL for direct upload
+      const uploadUrl = s3.presignUrl(s3Key, {
+        method: 'PUT',
+        expiresIn: 3600, // 1 hour
+        contentType: mimeType,
+      });
+      
+      console.log(`[Upload] Generated presigned URL for document ${documentId}, file: ${fileName}, size: ${fileSize}`);
+      
+      return c.json({
+        id: documentId,
+        uploadUrl,
+        s3Key,
+        expiresIn: 3600,
+      });
+      
+    } catch (error) {
+      console.error('[Upload] Error generating upload URL:', error);
+      return c.json({ 
+        error: 'Failed to generate upload URL',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }, 500);
+    }
+  });
+  
+  // Confirm upload completion
+  app.post('/upload-complete/:id', async (c) => {
+    const id = c.req.param('id');
+    
+    try {
+      const doc = await db.getDocument(id);
+      
+      if (!doc) {
+        return c.json({ error: 'Document not found' }, 404);
+      }
+      
+      // Verify file exists in S3
+      const exists = await s3.exists(doc.s3Key);
+      if (!exists) {
+        console.error(`[Upload] File not found in S3 for document ${id}: ${doc.s3Key}`);
+        await db.updateDocumentStatus(id, 'failed', {
+          error: 'File upload to S3 failed'
+        });
+        return c.json({ error: 'File upload failed' }, 400);
+      }
+      
+      // Get actual file metadata from S3
+      const metadata = await s3.getFileMetadata(doc.s3Key);
+      console.log(`[Upload] File verified in S3 for document ${id}, size: ${metadata.size}, type: ${metadata.type}`);
+      
+      // Update status and create conversion job
+      await db.updateDocumentStatus(id, 'processing');
+      
+      await db.createJob({
+        documentId: id,
+        type: 'convert',
+        priority: 1,
+      });
+      
+      return c.json({
+        id,
+        status: 'processing',
+        message: 'Upload confirmed, processing started',
+      });
+      
+    } catch (error) {
+      console.error('[Upload] Error confirming upload:', error);
+      return c.json({ 
+        error: 'Failed to confirm upload',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }, 500);
+    }
+  });
 
   app.post('/submit', async (c) => {
     try {
@@ -49,11 +152,24 @@ export function createDocumentRoutes(db: DatabaseService, s3: S3Service) {
       }
 
       if (file.size > MAX_FILE_SIZE) {
-        return c.json({ error: 'File size exceeds 50MB limit' }, 400);
+        return c.json({ 
+          error: `File size exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`,
+          details: {
+            fileSize: file.size,
+            maxSize: MAX_FILE_SIZE,
+            fileSizeMB: (file.size / 1024 / 1024).toFixed(2),
+            maxSizeMB: MAX_FILE_SIZE / 1024 / 1024
+          }
+        }, 400);
       }
 
-      const body = Object.fromEntries(formData);
-      delete body.file;
+      // Manually extract form data values
+      const body: Record<string, any> = {};
+      formData.forEach((value, key) => {
+        if (key !== 'file') {
+          body[key] = value;
+        }
+      });
       
       const params = uploadSchema.parse({
         retentionDays: body.retentionDays ? parseInt(body.retentionDays as string) : undefined,
@@ -69,8 +185,8 @@ export function createDocumentRoutes(db: DatabaseService, s3: S3Service) {
         mimeType: mimeType,
         fileSize: file.size,
         s3Key,
-        userId: c.get('userId') as string | undefined,
-        apiKey: c.get('apiKey') as string | undefined,
+        userId: undefined, // Would be set by auth middleware
+        apiKey: undefined, // Would be set by auth middleware
         retentionDays: params.retentionDays,
       });
 
@@ -82,54 +198,63 @@ export function createDocumentRoutes(db: DatabaseService, s3: S3Service) {
         method: 'GET',
       });
 
-      // Start async upload in background
+      // Decide upload strategy based on file size
+      const uploadStrategy = file.size > MULTIPART_THRESHOLD ? 'multipart' : 
+                           file.size > LARGE_FILE_THRESHOLD ? 'streaming' : 'standard';
+      
+      console.log(`[Upload] Document ${documentId} - Size: ${(file.size / 1024 / 1024).toFixed(2)}MB, Strategy: ${uploadStrategy}`);
+      
+      // Start async upload in background with optimized approach
       (async () => {
+        const uploadStartTime = Date.now();
+        
         try {
-          console.log(`Starting async upload for document ${documentId}`);
+          console.log(`[AsyncUpload] Starting for document ${documentId}`);
+          console.log(`[AsyncUpload] File: ${file.name}, Size: ${file.size} bytes (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+          console.log(`[AsyncUpload] MimeType: ${mimeType}, S3Key: ${s3Key}, Strategy: ${uploadStrategy}`);
           
-          // Bun's S3 client handles multipart uploads automatically
-          // We just need to provide the file data
-          if (file.size > 10 * 1024 * 1024) { // 10MB threshold
-            console.log(`Using streaming upload for large file: ${file.size} bytes`);
+          if (uploadStrategy === 'multipart' || uploadStrategy === 'streaming') {
+            console.log(`[AsyncUpload] Using ${uploadStrategy} upload for large file`);
             
-            // For large files, we need to use Bun's file writer API
-            const s3File = s3.client.file(`${s3.bucket}/${s3Key}`);
-            const writer = s3File.writer({
-              retry: 3,
-              queueSize: 10,
-              partSize: 5 * 1024 * 1024, // 5MB chunks
+            // Use Bun's efficient large file handling
+            await s3.uploadLarge(s3Key, file, {
               type: mimeType,
+              fileSize: file.size,
+              onProgress: (bytesWritten) => {
+                const progress = (bytesWritten / file.size * 100).toFixed(2);
+                const elapsed = (Date.now() - uploadStartTime) / 1000;
+                const rate = (bytesWritten / 1024 / 1024) / elapsed;
+                
+                // Log progress every 10%
+                if (Math.floor(bytesWritten / file.size * 10) > Math.floor((bytesWritten - 1) / file.size * 10)) {
+                  console.log(`[AsyncUpload] Progress: ${progress}% - ${rate.toFixed(2)} MB/s`);
+                }
+              }
             });
             
-            try {
-              const stream = file.stream();
-              const reader = stream.getReader();
-              let totalBytes = 0;
-              
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                
-                await writer.write(value);
-                totalBytes += value.byteLength;
-                console.log(`Upload progress for ${documentId}: ${totalBytes}/${file.size} bytes`);
-                await writer.flush();
-              }
-              
-              await writer.end();
-              console.log(`Large file upload completed for ${documentId}`);
-            } catch (error) {
-              console.error(`Writer error for ${documentId}:`, error);
-              throw error;
-            }
           } else {
-            const arrayBuffer = await file.arrayBuffer();
-            await s3.upload(s3Key, arrayBuffer, {
+            console.log(`[AsyncUpload] Using standard upload for small file`);
+            
+            // For small files, Bun can handle File objects directly
+            await s3.upload(s3Key, file, {
               type: mimeType,
             });
           }
           
-          console.log(`Upload completed for document ${documentId}`);
+          const uploadDuration = Date.now() - uploadStartTime;
+          const throughput = (file.size / 1024 / 1024) / (uploadDuration / 1000);
+          
+          console.log(`[AsyncUpload] Upload completed for document ${documentId}`);
+          console.log(`[AsyncUpload] Duration: ${uploadDuration}ms, Throughput: ${throughput.toFixed(2)} MB/s`);
+          
+          // Verify upload
+          const exists = await s3.exists(s3Key);
+          if (!exists) {
+            throw new Error('Upload verification failed - file not found in S3');
+          }
+          
+          const metadata = await s3.getFileMetadata(s3Key);
+          console.log(`[AsyncUpload] Verified: size=${metadata.size}, etag=${metadata.etag}`);
           
           // Update document status and create conversion job
           await db.updateDocumentStatus(documentId, 'processing');
@@ -141,16 +266,24 @@ export function createDocumentRoutes(db: DatabaseService, s3: S3Service) {
             priority: 1,
           });
           
-        } catch (error) {
-          console.error(`Async upload failed for document ${documentId}:`, error);
+        } catch (error: any) {
+          const uploadDuration = Date.now() - uploadStartTime;
           
-          // Update document status to failed
+          console.error(`[AsyncUpload] Failed for document ${documentId} after ${uploadDuration}ms:`, {
+            error: error.message,
+            code: error.code,
+            strategy: uploadStrategy,
+            fileSize: file.size,
+            stack: error.stack
+          });
+          
+          // Update document status to failed with detailed error
           await db.updateDocumentStatus(documentId, 'failed', {
-            error: error instanceof Error ? error.message : 'Upload failed'
+            error: `${error instanceof Error ? error.message : 'Upload failed'} [${error.code || 'UNKNOWN'}] - Strategy: ${uploadStrategy}, Duration: ${uploadDuration}ms, Size: ${file.size} bytes`
           });
         }
       })().catch(err => {
-        console.error('Background upload error:', err);
+        console.error('[AsyncUpload] Uncaught background upload error:', err);
       });
 
       return c.json({

@@ -11,7 +11,7 @@ interface WorkerMessage {
 }
 
 interface WorkerResponse {
-  type: 'completed' | 'failed' | 'ready';
+  type: 'completed' | 'failed' | 'ready' | 'heartbeat';
   jobId?: string;
   error?: string;
 }
@@ -21,9 +21,12 @@ class JobWorker {
   private s3: S3Service;
   private mistral: MistralService;
   private tempDir: string;
+  private workerId: string;
+  private heartbeatInterval?: Timer;
 
   constructor() {
     const env = process.env as any;
+    this.workerId = env.WORKER_ID || `worker-${process.pid}`;
     
     try {
       this.db = new DatabaseService(
@@ -190,7 +193,17 @@ class JobWorker {
   }
 
   async start() {
-    console.log('Job worker started and ready to process jobs');
+    console.log(`Worker ${this.workerId} started and ready to process jobs`);
+    
+    // Register worker with database
+    await this.db.registerWorker(this.workerId, process.pid, require('os').hostname());
+    
+    // Start heartbeat
+    this.heartbeatInterval = setInterval(async () => {
+      await this.db.updateWorkerHeartbeat(this.workerId);
+      const response: WorkerResponse = { type: 'heartbeat' };
+      console.log(JSON.stringify(response));
+    }, 30000); // Every 30 seconds
     
     // Send ready message to parent
     const response: WorkerResponse = { type: 'ready' };
@@ -203,6 +216,7 @@ class JobWorker {
         
         if (message.type === 'shutdown') {
           console.log('Worker shutting down');
+          await this.shutdown();
           process.exit(0);
         }
         
@@ -228,8 +242,32 @@ class JobWorker {
       }
     }
   }
+  
+  async shutdown() {
+    // Stop heartbeat
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+    }
+    
+    // Mark worker as stopping
+    await this.db.updateWorkerStatus(this.workerId, 'stopping');
+  }
 }
 
 // Start the worker
 const worker = new JobWorker();
+
+// Handle graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received');
+  await worker.shutdown();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received');
+  await worker.shutdown();
+  process.exit(0);
+});
+
 worker.start().catch(console.error);

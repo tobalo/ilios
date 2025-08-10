@@ -1,5 +1,6 @@
 import { DatabaseService } from './database';
 import { Subprocess } from 'bun';
+import * as os from 'os';
 
 interface WorkerMessage {
   type: 'process' | 'shutdown';
@@ -7,7 +8,7 @@ interface WorkerMessage {
 }
 
 interface WorkerResponse {
-  type: 'completed' | 'failed' | 'ready';
+  type: 'completed' | 'failed' | 'ready' | 'heartbeat';
   jobId?: string;
   error?: string;
 }
@@ -71,7 +72,10 @@ export class JobProcessorSpawn {
   private async spawnWorker(workerId: string) {
     const worker = Bun.spawn({
       cmd: ['bun', 'run', this.workerPath],
-      env: process.env,
+      env: {
+        ...process.env,
+        WORKER_ID: workerId,
+      },
       stdout: 'pipe',
       stderr: 'pipe',
       stdin: 'pipe',
@@ -79,13 +83,19 @@ export class JobProcessorSpawn {
 
     this.workers.set(workerId, worker);
 
+    // Register worker in database
+    await this.db.registerWorker(workerId, worker.pid!, os.hostname());
+
     // Handle worker output
     this.handleWorkerOutput(workerId, worker);
 
     // Handle worker errors
-    worker.exited.then((exitCode) => {
+    worker.exited.then(async (exitCode) => {
       console.error(`Worker ${workerId} exited with code ${exitCode}`);
       this.workers.delete(workerId);
+      
+      // Mark worker as dead in database
+      await this.db.updateWorkerStatus(workerId, 'dead');
       
       // Respawn worker if still running
       if (this.isRunning) {

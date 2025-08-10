@@ -52,6 +52,7 @@ export const jobQueue = sqliteTable('job_queue', {
   payload: text('payload', { mode: 'json' }),
   result: text('result', { mode: 'json' }),
   error: text('error'),
+  workerId: text('worker_id'), // Track which worker is processing this job
   scheduledAt: integer('scheduled_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
   startedAt: integer('started_at', { mode: 'timestamp' }),
   completedAt: integer('completed_at', { mode: 'timestamp' }),
@@ -60,4 +61,18 @@ export const jobQueue = sqliteTable('job_queue', {
   statusIdx: index('job_status_idx').on(table.status),
   scheduledAtIdx: index('scheduled_at_idx').on(table.scheduledAt),
   priorityIdx: index('priority_idx').on(table.priority),
+  workerIdx: index('worker_idx').on(table.workerId),
+}));
+
+// Track active workers
+export const workers = sqliteTable('workers', {
+  id: text('id').primaryKey(),
+  pid: integer('pid').notNull(),
+  hostname: text('hostname').notNull(),
+  startedAt: integer('started_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  lastHeartbeat: integer('last_heartbeat', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  status: text('status', { enum: ['active', 'stopping', 'dead'] }).notNull().default('active'),
+}, (table) => ({
+  statusIdx: index('worker_status_idx').on(table.status),
+  heartbeatIdx: index('heartbeat_idx').on(table.lastHeartbeat),
 }));

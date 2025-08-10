@@ -94,6 +94,15 @@ const initializeServices = (env: any) => {
 const env = process.env as any;
 const { db, s3, mistral } = initializeServices(env);
 
+// Test S3 connection on startup
+s3.testConnection().then(connected => {
+  if (!connected) {
+    console.error('[Main] WARNING: S3 connection test failed during startup');
+  }
+}).catch(err => {
+  console.error('[Main] ERROR: S3 connection test failed:', err);
+});
+
 // Mount document routes
 const documentRoutes = createDocumentRoutes(db, s3);
 app.route('/api/documents', documentRoutes);
@@ -107,6 +116,9 @@ let jobProcessor: JobProcessorSpawn | null = null;
 
 const startJobProcessor = async () => {
   if (!jobProcessor) {
+    // Clean up jobs from workers that no longer exist
+    await db.cleanupOrphanedJobs();
+    
     jobProcessor = new JobProcessorSpawn(db, 2); // 2 worker processes
     await jobProcessor.start();
     console.log('Job processor started with 2 workers');
