@@ -49,10 +49,17 @@ class JobWorker {
       this.mistral = new MistralService(env.MISTRAL_API_KEY!);
       
       // Create temp directory for large file processing
-      this.tempDir = '/tmp/convert-api-worker';
+      this.tempDir = './tmp/convert-api-worker';
       try {
-        Bun.spawnSync(['mkdir', '-p', this.tempDir]);
-      } catch {}
+        const result = Bun.spawnSync(['mkdir', '-p', this.tempDir]);
+        if (result.exitCode !== 0) {
+          console.error(`Failed to create temp directory: ${result.stderr?.toString()}`);
+        } else {
+          console.log(`Created temp directory: ${this.tempDir}`);
+        }
+      } catch (error) {
+        console.error(`Error creating temp directory: ${error}`);
+      }
     } catch (error) {
       console.error('Worker initialization error:', error);
       throw error;
@@ -108,8 +115,12 @@ class JobWorker {
         // Stream large files directly to disk using Bun's optimized I/O
         tempFilePath = `${this.tempDir}/${document.id}-${Date.now()}.tmp`;
         
+        console.log(`[Worker] Streaming large file to temp: ${tempFilePath}, s3Key: ${document.s3Key}`);
+        
         // Use Bun's streaming capabilities to download directly to file
         await this.s3.streamToFile(document.s3Key, tempFilePath);
+        
+        console.log(`[Worker] File downloaded to temp, reading into memory`);
         
         // Read file for Mistral processing using Bun.file
         const file = Bun.file(tempFilePath);
