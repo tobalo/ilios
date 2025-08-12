@@ -1,5 +1,5 @@
 {
-  "name": "convert-api",
+  "name": "ilios-api",
   "type": "module",
   "scripts": {
     "dev": "bun run --hot src/index.ts",
@@ -13,12 +13,12 @@
     "@libsql/client": "^0.15.10",
     "@mistralai/mistralai": "^1.7.5",
     "@paralleldrive/cuid2": "^2.2.2",
-    "drizzle-orm": "^0.36.1",
-    "hono": "^4.8.12",
-    "zod": "^3.23.8"
+    "drizzle-orm": "^0.44.4",
+    "hono": "^4.9.1",
+    "zod": "^4.0.17"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "drizzle-kit": "^0.27.2"
+    "drizzle-kit": "^0.31.4"
   }
 }

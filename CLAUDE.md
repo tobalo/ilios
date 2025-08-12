@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Convert Docs API v2 - A document-to-markdown conversion API using Turso (edge SQLite), Tigris S3, and Mistral Pixtral OCR.
+Convert Docs API v2 - A document-to-markdown conversion API using Turso (edge SQLite), Tigris S3, and Mistral OCR.
 
 ## Essential Commands
 
@@ -26,11 +26,15 @@ bun run db:studio     # Open Drizzle Studio for visual DB management
 Required environment variables:
 - `TURSO_DATABASE_URL` - Turso database URL (remote sync target)
 - `TURSO_AUTH_TOKEN` - Turso authentication token
-- `MISTRAL_API_KEY` - Mistral API key for Pixtral OCR
-- `TIGRIS_ACCESS_KEY_ID` - Tigris S3 access key
-- `TIGRIS_SECRET_ACCESS_KEY` - Tigris S3 secret key
-- `TIGRIS_BUCKET_NAME` - S3 bucket name for document storage
-- `TIGRIS_ENDPOINT` - Tigris S3 endpoint URL
+- `MISTRAL_API_KEY` - Mistral API key for OCR processing
+- `TIGRIS_ACCESS_KEY_ID` - Tigris S3 access key (or AWS_ACCESS_KEY_ID)
+- `TIGRIS_SECRET_ACCESS_KEY` - Tigris S3 secret key (or AWS_SECRET_ACCESS_KEY)
+- `TIGRIS_BUCKET_NAME` - S3 bucket name for document storage (or S3_BUCKET)
+- `TIGRIS_ENDPOINT` - Tigris S3 endpoint URL (or AWS_ENDPOINT_URL_S3)
+- `API_KEY` - Optional API key for authentication
+- `LOCAL_DB_PATH` - Local SQLite file path (default: ./src/db/convert-docs.db)
+- `TURSO_SYNC_INTERVAL` - Sync interval in seconds (default: 60)
+- `DB_ENCRYPTION_KEY` - Optional encryption key for local database
 
 ## Architecture
 
@@ -44,7 +48,8 @@ Required environment variables:
 - **Edge-First**: Uses embedded SQLite replicas for microsecond read latency
 - **Job Queue**: Database-backed async processing with worker spawn management
 - **Multipart Upload**: Automatic chunking for files > 50MB
-- **Usage Tracking**: Token-based billing with configurable margins
+- **Usage Tracking**: Page-based billing with configurable margins
+- **Worker Spawn**: Uses Bun's spawn API for process-based workers
 
 ### Database Schema (`src/db/schema.ts`)
 - `documents` - Document metadata, content, and processing status
@@ -61,14 +66,19 @@ Required environment variables:
 - Main process spawns worker processes (`src/services/job-processor-spawn.ts`)
 - Workers process jobs from database queue (`src/workers/job-worker.ts`)
 - Automatic worker lifecycle management with health checks
+- Configurable worker count (default: 2)
+- Heartbeat monitoring every 30 seconds
+- Auto-restart on failure with 5-second delay
 
 ## Important Notes
 
 1. **No Test Framework**: Currently no test files or testing commands configured
-2. **Bun Runtime**: Uses Bun-specific features (hot reload, native S3 helpers)
-3. **Active Development**: Recent features include embedded replicas and multipart uploads
-4. **Security**: Optional API key authentication via `API_KEY` environment variable
-5. **File Limits**: Supports files up to 1GB, configurable retention (1-3650 days)
+2. **No Linting**: No ESLint or code formatting tools configured
+3. **Bun Runtime**: Uses Bun-specific features (hot reload, native S3 helpers, spawn API)
+4. **Active Development**: Recent features include embedded replicas and multipart uploads
+5. **Security**: Optional API key authentication via `API_KEY` environment variable
+6. **File Limits**: Supports files up to 1GB, configurable retention (1-3650 days)
+7. **Database Files**: SQLite database files are tracked in git (unusual but intentional)
 
 ## Common Tasks
 
@@ -86,3 +96,8 @@ Required environment variables:
 - Check `jobQueue` table for job status
 - Monitor `workers` table for active workers
 - Worker logs include job IDs for tracing
+
+### Working with Large Files
+- Files > 10MB automatically stream to temp directory
+- Files > 50MB use multipart S3 upload
+- Temp files cleaned up after processing
