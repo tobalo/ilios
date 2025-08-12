@@ -1,4 +1,4 @@
-# Convert Docs API v2
+# Ilios OCR API
 
 A streamlined document-to-markdown conversion API using Turso (edge SQLite), Tigris S3, and Mistral OCR.
 
