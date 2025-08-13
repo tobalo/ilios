@@ -28,7 +28,7 @@ export const openAPISpec = {
       Document: {
         type: 'object',
         properties: {
-          id: { type: 'string', format: 'uuid' },
+          id: { type: 'string', pattern: '^[a-z0-9]{20,30}$', description: 'CUID2 identifier' },
           fileName: { type: 'string' },
           mimeType: { type: 'string' },
           fileSize: { type: 'integer' },
@@ -47,7 +47,7 @@ export const openAPISpec = {
       SubmitResponse: {
         type: 'object',
         properties: {
-          id: { type: 'string', format: 'uuid' },
+          id: { type: 'string', pattern: '^[a-z0-9]{20,30}$', description: 'CUID2 identifier' },
           status: { type: 'string' },
           message: { type: 'string' },
         },
@@ -55,7 +55,7 @@ export const openAPISpec = {
       StatusResponse: {
         type: 'object',
         properties: {
-          id: { type: 'string', format: 'uuid' },
+          id: { type: 'string', pattern: '^[a-z0-9]{20,30}$', description: 'CUID2 identifier' },
           status: {
             type: 'string',
             enum: ['pending', 'processing', 'completed', 'failed'],
@@ -224,8 +224,8 @@ export const openAPISpec = {
             name: 'id',
             in: 'path',
             required: true,
-            description: 'Document ID',
-            schema: { type: 'string', format: 'uuid' },
+            description: 'Document ID (CUID2 format)',
+            schema: { type: 'string', pattern: '^[a-z0-9]{20,30}$' },
           },
         ],
         responses: {
@@ -257,8 +257,8 @@ export const openAPISpec = {
             name: 'id',
             in: 'path',
             required: true,
-            description: 'Document ID',
-            schema: { type: 'string', format: 'uuid' },
+            description: 'Document ID (CUID2 format)',
+            schema: { type: 'string', pattern: '^[a-z0-9]{20,30}$' },
           },
         ],
         responses: {

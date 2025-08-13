@@ -11,6 +11,9 @@ const uploadSchema = z.object({
   retentionDays: z.number().min(1).max(3650).optional(),
 });
 
+// CUID2 format validation
+const cuid2Schema = z.string().regex(/^[a-z0-9]{20,30}$/, 'Invalid document ID format');
+
 export function createDocumentRoutes(db: DatabaseService, s3: S3Service) {
   const app = new Hono();
 
@@ -69,6 +72,15 @@ export function createDocumentRoutes(db: DatabaseService, s3: S3Service) {
   // Confirm upload completion
   app.post('/upload-complete/:id', async (c) => {
     const id = c.req.param('id');
+    
+    // Validate CUID2 format
+    const validation = cuid2Schema.safeParse(id);
+    if (!validation.success) {
+      return c.json({ 
+        error: 'Invalid document ID format',
+        details: validation.error.errors[0].message 
+      }, 400);
+    }
     
     try {
       const doc = await db.getDocument(id);
@@ -307,6 +319,15 @@ export function createDocumentRoutes(db: DatabaseService, s3: S3Service) {
   app.get('/status/:id', async (c) => {
     const id = c.req.param('id');
     
+    // Validate CUID2 format
+    const validation = cuid2Schema.safeParse(id);
+    if (!validation.success) {
+      return c.json({ 
+        error: 'Invalid document ID format',
+        details: validation.error.errors[0].message 
+      }, 400);
+    }
+    
     try {
       const doc = await db.getDocument(id);
       
@@ -340,6 +361,15 @@ export function createDocumentRoutes(db: DatabaseService, s3: S3Service) {
   app.get('/:id', async (c) => {
     const id = c.req.param('id');
     const format = c.req.query('format') || 'markdown';
+    
+    // Validate CUID2 format
+    const validation = cuid2Schema.safeParse(id);
+    if (!validation.success) {
+      return c.json({ 
+        error: 'Invalid document ID format',
+        details: validation.error.errors[0].message 
+      }, 400);
+    }
     
     try {
       const doc = await db.getDocument(id);
@@ -379,6 +409,15 @@ export function createDocumentRoutes(db: DatabaseService, s3: S3Service) {
 
   app.get('/:id/original', async (c) => {
     const id = c.req.param('id');
+    
+    // Validate CUID2 format
+    const validation = cuid2Schema.safeParse(id);
+    if (!validation.success) {
+      return c.json({ 
+        error: 'Invalid document ID format',
+        details: validation.error.errors[0].message 
+      }, 400);
+    }
     
     try {
       const doc = await db.getDocument(id);
