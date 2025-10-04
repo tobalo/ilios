@@ -23,32 +23,51 @@ A production-ready document-to-markdown conversion API built with Bun, featuring
 
 ### System Overview
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                       Ilios API Server                       │
-├─────────────────────────────────────────────────────────────┤
-│  Main Process                                               │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │  Hono API    │  │ Job Processor│  │  S3 Service  │      │
-│  │  (Routes)    │  │  (Spawn Mgr) │  │  (Tigris)    │      │
-│  └──────┬───────┘  └──────┬───────┘  └──────────────┘      │
-│         │                  │                                 │
-│         └──────────┬───────┘                                │
-│                    │                                         │
-│         ┌──────────▼──────────┐                             │
-│         │  SQLite Database    │                             │
-│         │  (./data/ilios.db)  │                             │
-│         │  WAL Mode Enabled   │                             │
-│         └─────────────────────┘                             │
-├─────────────────────────────────────────────────────────────┤
-│  Worker Processes (spawned via Bun)                        │
-│  ┌──────────────┐  ┌──────────────┐                        │
-│  │  Worker 0    │  │  Worker 1    │                        │
-│  │  - Claims    │  │  - Claims    │                        │
-│  │  - Processes │  │  - Processes │                        │
-│  │  - Retries   │  │  - Retries   │                        │
-│  └──────────────┘  └──────────────┘                        │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph "Main Process - API Server"
+        API[Hono API<br/>Routes & Middleware]
+        JP[Job Processor<br/>Worker Manager]
+        S3[S3 Service<br/>Tigris/R2]
+        
+        API -.-> JP
+        API -.-> S3
+    end
+    
+    subgraph "Worker Processes (Spawned)"
+        W0{{Worker 0<br/>Atomic Claim<br/>Process<br/>Retry}}
+        W1{{Worker 1<br/>Atomic Claim<br/>Process<br/>Retry}}
+    end
+    
+    DB[(SQLite DB<br/>./data/ilios.db<br/>WAL Mode<br/><br/>Future: Turso Sync)]
+    
+    EXT_S3[("☁️ S3 Storage<br/>(Tigris)")]
+    EXT_MISTRAL[("🤖 Mistral OCR<br/>API")]
+    
+    API -->|Read/Write| DB
+    JP -->|Manage| W0
+    JP -->|Manage| W1
+    JP -->|Cleanup Jobs| DB
+    
+    W0 -->|Claim Jobs<br/>Update Status| DB
+    W1 -->|Claim Jobs<br/>Update Status| DB
+    
+    W0 -->|Download/Upload| EXT_S3
+    W1 -->|Download/Upload| EXT_S3
+    
+    W0 -->|OCR Request| EXT_MISTRAL
+    W1 -->|OCR Request| EXT_MISTRAL
+    
+    S3 -->|Upload Files| EXT_S3
+    
+    style DB fill:#e1f5ff,stroke:#0288d1,stroke-width:3px
+    style API fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style JP fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style S3 fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style W0 fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    style W1 fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    style EXT_S3 fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style EXT_MISTRAL fill:#fce4ec,stroke:#c2185b,stroke-width:2px
 ```
 
 ### Request Flow (Detailed Sequence)
