@@ -2,6 +2,10 @@
 
 A production-ready document-to-markdown conversion API built with Bun, featuring local-first architecture, atomic job processing, and automatic retry logic.
 
+### TODO: 
+- Add batch submit and req/reply markdown convert endpoints
+-- Evaluation and processing benchmarks
+
 ## Features
 
 - 📄 **Document Conversion** - PDF/images to Markdown using Mistral OCR ($1 per 1000 pages)
