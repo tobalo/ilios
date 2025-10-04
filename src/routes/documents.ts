@@ -103,9 +103,7 @@ export function createDocumentRoutes(db: DatabaseService, s3: S3Service) {
       const metadata = await s3.getFileMetadata(doc.s3Key);
       console.log(`[Upload] File verified in S3 for document ${id}, size: ${metadata.size}, type: ${metadata.type}`);
       
-      // Update status and create conversion job
-      await db.updateDocumentStatus(id, 'processing');
-      
+      // Create conversion job (document stays in 'pending' until worker claims it)
       await db.createJob({
         documentId: id,
         type: 'convert',
@@ -114,8 +112,8 @@ export function createDocumentRoutes(db: DatabaseService, s3: S3Service) {
       
       return c.json({
         id,
-        status: 'processing',
-        message: 'Upload confirmed, processing started',
+        status: 'pending',
+        message: 'Upload confirmed, queued for processing',
       });
       
     } catch (error) {
@@ -268,10 +266,7 @@ export function createDocumentRoutes(db: DatabaseService, s3: S3Service) {
           const metadata = await s3.getFileMetadata(s3Key);
           console.log(`[AsyncUpload] Verified: size=${metadata.size}, etag=${metadata.etag}`);
           
-          // Update document status and create conversion job
-          await db.updateDocumentStatus(documentId, 'processing');
-          
-          // Create conversion job
+          // Create conversion job (document stays in 'pending' until worker claims it)
           await db.createJob({
             documentId,
             type: 'convert',
@@ -300,11 +295,11 @@ export function createDocumentRoutes(db: DatabaseService, s3: S3Service) {
 
       return c.json({
         id: documentId,
-        status: 'uploading',
+        status: 'pending',
         fileName: file.name,
         fileSize: file.size,
         uploadUrl,
-        message: 'Document upload initiated. Processing will begin once upload completes.',
+        message: 'Document upload initiated. Will be queued for processing once upload completes.',
       });
 
     } catch (error) {

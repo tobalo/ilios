@@ -14,7 +14,7 @@ Convert Docs API v2 - A document-to-markdown conversion API using Turso (edge SQ
 bun run dev
 
 # Setup database (run this before first use)
-bun run scripts/setup-db.ts
+bun run db:push
 
 # Database management
 bun run db:generate    # Generate Drizzle types from schema
@@ -24,29 +24,32 @@ bun run db:studio     # Open Drizzle Studio for visual DB management
 
 ### Environment Setup
 Required environment variables:
-- `TURSO_DATABASE_URL` - Turso database URL (remote sync target)
-- `TURSO_AUTH_TOKEN` - Turso authentication token
-- `MISTRAL_API_KEY` - Mistral API key for OCR processing
-- `TIGRIS_ACCESS_KEY_ID` - Tigris S3 access key (or AWS_ACCESS_KEY_ID)
-- `TIGRIS_SECRET_ACCESS_KEY` - Tigris S3 secret key (or AWS_SECRET_ACCESS_KEY)
-- `TIGRIS_BUCKET_NAME` - S3 bucket name for document storage (or S3_BUCKET)
-- `TIGRIS_ENDPOINT` - Tigris S3 endpoint URL (or AWS_ENDPOINT_URL_S3)
-- `API_KEY` - Optional API key for authentication
-- `LOCAL_DB_PATH` - Local SQLite file path (default: ./src/db/convert-docs.db)
+- `USE_EMBEDDED_REPLICA` - Set to 'true' for Turso sync, 'false' for local-only (default: false)
+- `LOCAL_DB_PATH` - Local SQLite file path (default: ./data/ilios.db)
+- `TURSO_DATABASE_URL` - Turso database URL (only if USE_EMBEDDED_REPLICA=true)
+- `TURSO_AUTH_TOKEN` - Turso authentication token (only if USE_EMBEDDED_REPLICA=true)
 - `TURSO_SYNC_INTERVAL` - Sync interval in seconds (default: 60)
 - `DB_ENCRYPTION_KEY` - Optional encryption key for local database
+- `MISTRAL_API_KEY` - Mistral API key for OCR processing
+- `AWS_ACCESS_KEY_ID` - S3 access key
+- `AWS_SECRET_ACCESS_KEY` - S3 secret key
+- `S3_BUCKET` - S3 bucket name for document storage
+- `AWS_ENDPOINT_URL_S3` - S3 endpoint URL
+- `API_KEY` - Optional API key for authentication
 
 ## Architecture
 
 ### Core Components
 1. **API Layer** (`src/index.ts`) - Hono framework with OpenAPI/Swagger UI
-2. **Database** (`src/services/database.ts`) - Turso with embedded replica for edge performance
+2. **Database** (`src/services/database.ts`) - Local SQLite or Turso with optional embedded replica
 3. **Job Processing** (`src/services/job-processor-spawn.ts`) - Multi-worker spawn-based job processing
 4. **Storage** (`src/services/s3.ts`) - S3-compatible storage with multipart upload support
 
 ### Key Design Patterns
-- **Edge-First**: Uses embedded SQLite replicas for microsecond read latency
-- **Job Queue**: Database-backed async processing with worker spawn management
+- **Local-First**: Uses local SQLite database stored in `./data/ilios.db`
+- **Optional Sync**: Toggle embedded replicas with `USE_EMBEDDED_REPLICA=true` for Turso sync
+- **Job Queue**: Database-backed async processing with atomic job claiming
+- **Automatic Retries**: Failed jobs retry with exponential backoff (5s, 10s, 20s), max 3 attempts
 - **Multipart Upload**: Automatic chunking for files > 50MB
 - **Usage Tracking**: Page-based billing with configurable margins
 - **Worker Spawn**: Uses Bun's spawn API for process-based workers
@@ -56,6 +59,7 @@ Required environment variables:
 - `usage` - API usage tracking with token counts
 - `jobQueue` - Async job management
 - `workers` - Active worker process tracking
+- Migrations stored in `src/db/migrations/`
 
 ### API Routes
 - `/api/documents/*` - Document submission, status, and retrieval
@@ -64,21 +68,32 @@ Required environment variables:
 
 ### Worker Architecture
 - Main process spawns worker processes (`src/services/job-processor-spawn.ts`)
-- Workers process jobs from database queue (`src/workers/job-worker.ts`)
+- Workers atomically claim jobs using database transactions (`claimNextJob()`)
+- **Shared Database**: All workers and main process use `./data/ilios.db` with WAL mode
+- **Shared Temp Directory**: All workers use `./data/tmp/` for temporary files
+- **Job State Flow**: `pending` → `processing` → `completed`|`failed`
+  - Failed jobs auto-retry with exponential backoff if attempts < maxAttempts
+  - Orphaned jobs (worker died) are reset to `pending` or marked `failed` based on attempt count
 - Automatic worker lifecycle management with health checks
 - Configurable worker count (default: 2)
-- Heartbeat monitoring every 30 seconds
+- Heartbeat monitoring every 30 seconds with retry on SQLITE_BUSY
+- Orphaned job cleanup on startup and every 30 seconds
 - Auto-restart on failure with 5-second delay
+- Graceful shutdown with 5-second timeout, waits for active jobs to complete
 
 ## Important Notes
 
 1. **No Test Framework**: Currently no test files or testing commands configured
 2. **No Linting**: No ESLint or code formatting tools configured
 3. **Bun Runtime**: Uses Bun-specific features (hot reload, native S3 helpers, spawn API)
-4. **Active Development**: Recent features include embedded replicas and multipart uploads
-5. **Security**: Optional API key authentication via `API_KEY` environment variable
-6. **File Limits**: Supports files up to 1GB, configurable retention (1-3650 days)
-7. **Database Files**: SQLite database files are tracked in git (unusual but intentional)
+4. **Local-First Database**: Default mode uses local SQLite (`./data/ilios.db`), no remote required
+5. **WAL Mode**: Database uses WAL journaling with 5-second busy timeout for concurrent access
+6. **Optional Turso Sync**: Enable with `USE_EMBEDDED_REPLICA=true` for edge replica sync
+7. **Security**: Optional API key authentication via `API_KEY` environment variable
+8. **File Limits**: Supports files up to 1GB, configurable retention (1-3650 days)
+9. **Data Directory**: `./data/` is gitignored, contains:
+   - `ilios.db` - Main SQLite database (shared by all processes)
+   - `tmp/` - Temporary file storage for large file processing
 
 ## Common Tasks
 
@@ -89,8 +104,9 @@ Required environment variables:
 
 ### Modifying Database Schema
 1. Edit `src/db/schema.ts`
-2. Run `bun run db:generate` to create migration
-3. Run `bun run db:push` to apply changes
+2. Run `bun run db:push` to apply changes directly
+   OR
+   Run `bun run db:generate` to create migration in `src/db/migrations/` then `bun run db:migrate`
 
 ### Debugging Job Processing
 - Check `jobQueue` table for job status
@@ -98,6 +114,60 @@ Required environment variables:
 - Worker logs include job IDs for tracing
 
 ### Working with Large Files
-- Files > 10MB automatically stream to temp directory
+- Files > 10MB automatically stream to `./data/tmp/` directory
 - Files > 50MB use multipart S3 upload
 - Temp files cleaned up after processing
+- Workers use Node.js fs/promises instead of Bun APIs for file operations
+
+### Worker Process Gotchas
+- Workers are spawned as separate Bun processes but don't have access to all Bun globals
+- Use Node.js APIs (`fs/promises`) instead of Bun APIs (`Bun.file`, `Bun.spawnSync`)
+- Workers communicate via stdin/stdout using JSON messages
+- Database SQLITE_BUSY errors are automatically retried with exponential backoff
+## Document & Job Status Flow
+
+### Correct Status Progression
+
+**Document Status:**
+```
+pending → processing → completed|failed → archived
+```
+
+**Job Status:**
+```
+pending → processing → completed|failed
+         ↓ (retry)
+    pending (with backoff)
+```
+
+### Timeline
+
+1. **Upload Phase**
+   - Document created: `status = 'pending'` (default)
+   - File uploaded to S3 (async)
+   - Job created: `status = 'pending'`
+   - Client receives: `{status: 'pending'}`
+
+2. **Worker Claims Job (Atomic)**
+   - Worker calls `claimNextJob(workerId)`
+   - Transaction: `UPDATE job SET status='processing', worker_id=X, attempts++`
+   - Worker updates: `UPDATE document SET status='processing'`
+
+3. **Processing**
+   - Download from S3
+   - Send to Mistral OCR
+   - Store result
+
+4. **Completion**
+   - Success: `document.status = 'completed'`, `job.status = 'completed'`
+   - Failure: Retry if `attempts < maxAttempts`, else `failed`
+
+### Important Rules
+
+- ✅ **ONLY workers** set `document.status = 'processing'` (after claiming job)
+- ✅ API endpoints create jobs but leave document in `pending`
+- ✅ Job claiming is atomic (transaction-based)
+- ✅ Status updates follow the progression above
+- ❌ **NEVER** set `processing` before worker claims job
+- ❌ **NEVER** skip statuses in the flow
+

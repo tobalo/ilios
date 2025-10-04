@@ -107,7 +107,10 @@ export class S3Service {
 
   async streamToFile(key: string, destinationPath: string): Promise<void> {
     const file = this.client.file(key);
-    await write(destinationPath, file);
+    const arrayBuffer = await file.arrayBuffer();
+    
+    const fs = await import('fs/promises');
+    await fs.writeFile(destinationPath, Buffer.from(arrayBuffer));
   }
 
   async exists(key: string): Promise<boolean> {

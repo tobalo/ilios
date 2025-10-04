@@ -49,6 +49,26 @@ export const openAPISpec = {
         properties: {
           id: { type: 'string', pattern: '^[a-z0-9]{20,30}$', description: 'CUID2 identifier' },
           status: { type: 'string' },
+          fileName: { type: 'string' },
+          fileSize: { type: 'integer' },
+          uploadUrl: { type: 'string' },
+          message: { type: 'string' },
+        },
+      },
+      UploadUrlResponse: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', pattern: '^[a-z0-9]{20,30}$', description: 'CUID2 identifier' },
+          uploadUrl: { type: 'string' },
+          s3Key: { type: 'string' },
+          expiresIn: { type: 'integer' },
+        },
+      },
+      UploadCompleteResponse: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', pattern: '^[a-z0-9]{20,30}$', description: 'CUID2 identifier' },
+          status: { type: 'string' },
           message: { type: 'string' },
         },
       },
@@ -69,13 +89,42 @@ export const openAPISpec = {
       UsageSummary: {
         type: 'object',
         properties: {
-          totalDocuments: { type: 'integer' },
-          totalCostCents: { type: 'integer' },
-          documentsProcessed: { type: 'integer' },
-          averageProcessingTime: { type: 'number' },
-          byStatus: {
+          summary: {
             type: 'object',
-            additionalProperties: { type: 'integer' },
+            properties: {
+              totalDocuments: { type: 'integer' },
+              totalOperations: { type: 'integer' },
+              totalInputTokens: { type: 'integer' },
+              totalOutputTokens: { type: 'integer' },
+              totalCostCents: { type: 'integer' },
+              totalCostUSD: { type: 'string' },
+            },
+          },
+          filters: {
+            type: 'object',
+            properties: {
+              startDate: { type: 'string', format: 'date-time', nullable: true },
+              endDate: { type: 'string', format: 'date-time', nullable: true },
+            },
+          },
+        },
+      },
+      UsageBreakdown: {
+        type: 'object',
+        properties: {
+          breakdown: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                operation: { type: 'string' },
+                count: { type: 'integer' },
+                totalInputTokens: { type: 'integer' },
+                totalOutputTokens: { type: 'integer' },
+                totalCostCents: { type: 'integer' },
+                totalCostUSD: { type: 'string' },
+              },
+            },
           },
         },
       },
@@ -144,6 +193,96 @@ export const openAPISpec = {
           },
           '503': {
             description: 'Service is unhealthy',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/documents/upload-url': {
+      post: {
+        summary: 'Generate Upload URL',
+        description: 'Generate a presigned URL for direct client uploads',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['fileName', 'fileSize'],
+                properties: {
+                  fileName: { type: 'string' },
+                  fileSize: { type: 'integer' },
+                  mimeType: { type: 'string' },
+                  retentionDays: { type: 'integer', minimum: 1, maximum: 3650 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Presigned URL generated',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UploadUrlResponse' },
+              },
+            },
+          },
+          '400': {
+            description: 'Bad request',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          '401': {
+            description: 'Unauthorized',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/documents/upload-complete/{id}': {
+      post: {
+        summary: 'Confirm Upload Completion',
+        description: 'Confirm that a direct upload has completed and start processing',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            description: 'Document ID (CUID2 format)',
+            schema: { type: 'string', pattern: '^[a-z0-9]{20,30}$' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Upload confirmed',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UploadCompleteResponse' },
+              },
+            },
+          },
+          '400': {
+            description: 'Bad request',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          '404': {
+            description: 'Document not found',
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/Error' },
@@ -260,6 +399,12 @@ export const openAPISpec = {
             description: 'Document ID (CUID2 format)',
             schema: { type: 'string', pattern: '^[a-z0-9]{20,30}$' },
           },
+          {
+            name: 'format',
+            in: 'query',
+            description: 'Response format (json or markdown)',
+            schema: { type: 'string', enum: ['json', 'markdown'], default: 'markdown' },
+          },
         ],
         responses: {
           '200': {
@@ -268,7 +413,46 @@ export const openAPISpec = {
               'application/json': {
                 schema: { $ref: '#/components/schemas/Document' },
               },
+              'text/markdown': {
+                schema: { type: 'string' },
+              },
             },
+          },
+          '400': {
+            description: 'Document not ready',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          '404': {
+            description: 'Document not found',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/documents/{id}/original': {
+      get: {
+        summary: 'Get Original Document',
+        description: 'Redirect to the original uploaded document in S3',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            description: 'Document ID (CUID2 format)',
+            schema: { type: 'string', pattern: '^[a-z0-9]{20,30}$' },
+          },
+        ],
+        responses: {
+          '302': {
+            description: 'Redirect to presigned S3 URL',
           },
           '404': {
             description: 'Document not found',
@@ -305,6 +489,22 @@ export const openAPISpec = {
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/UsageSummary' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/usage/breakdown': {
+      get: {
+        summary: 'Usage Breakdown',
+        description: 'Get detailed usage breakdown by operation type',
+        responses: {
+          '200': {
+            description: 'Usage breakdown',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UsageBreakdown' },
               },
             },
           },

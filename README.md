@@ -1,147 +1,405 @@
-# Ilios OCR API
+# Ilios API
 
-A streamlined document-to-markdown conversion API using Turso (edge SQLite), Tigris S3, and Mistral OCR.
+A production-ready document-to-markdown conversion API built with Bun, featuring local-first architecture, atomic job processing, and automatic retry logic.
 
 ## Features
 
-- 📄 Document to Markdown conversion using Mistral OCR ($1 per 1000 pages)
-- 💾 Document retention and archival (configurable retention period)
-- 📊 Usage tracking with margin-based billing
-- 🚀 Edge-optimized with Turso database using embedded replicas
-- 💨 Local SQLite (libsql) for fast reads with automatic sync to Turso
-- 🗄️ S3-compatible storage with Tigris (using Bun's native S3 helpers)
-- ⚡ Async job processing with database-backed queue
-- 📦 Support for large files up to 1GB
-- 🔒 Optional API key authentication
+- 📄 **Document Conversion** - PDF/images to Markdown using Mistral OCR ($1 per 1000 pages)
+- 💾 **Document Retention** - Configurable archival (1-3650 days)
+- 📊 **Usage Tracking** - Token-based billing with configurable margins
+- 🚀 **Local-First Database** - SQLite with optional Turso sync via embedded replicas
+- 🗄️ **S3-Compatible Storage** - Tigris/Cloudflare R2 support with multipart upload
+- ⚡ **Atomic Job Queue** - Transaction-based job claiming prevents race conditions
+- 🔄 **Automatic Retries** - Exponential backoff (5s, 10s, 20s) with max 3 attempts
+- 📦 **Large File Support** - Up to 1GB with streaming and temp file handling
+- 🔒 **Optional Auth** - API key authentication via header or env variable
+- 🛡️ **Graceful Shutdown** - Waits for active jobs before process termination
 
 ## Architecture
+
+### System Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                       Ilios API Server                       │
+├─────────────────────────────────────────────────────────────┤
+│  Main Process                                               │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │  Hono API    │  │ Job Processor│  │  S3 Service  │      │
+│  │  (Routes)    │  │  (Spawn Mgr) │  │  (Tigris)    │      │
+│  └──────┬───────┘  └──────┬───────┘  └──────────────┘      │
+│         │                  │                                 │
+│         └──────────┬───────┘                                │
+│                    │                                         │
+│         ┌──────────▼──────────┐                             │
+│         │  SQLite Database    │                             │
+│         │  (./data/ilios.db)  │                             │
+│         │  WAL Mode Enabled   │                             │
+│         └─────────────────────┘                             │
+├─────────────────────────────────────────────────────────────┤
+│  Worker Processes (spawned via Bun)                        │
+│  ┌──────────────┐  ┌──────────────┐                        │
+│  │  Worker 0    │  │  Worker 1    │                        │
+│  │  - Claims    │  │  - Claims    │                        │
+│  │  - Processes │  │  - Processes │                        │
+│  │  - Retries   │  │  - Retries   │                        │
+│  └──────────────┘  └──────────────┘                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Request Flow (Detailed Sequence)
 
 ```mermaid
 sequenceDiagram
     participant C as Client
     participant API as Hono API
-    participant DB as Turso DB<br/>(Embedded Replica)
-    participant Q as Job Queue
-    participant W as Job Worker
-    participant S3 as Tigris S3
+    participant DB as SQLite DB<br/>(WAL Mode)
+    participant JP as Job Processor
+    participant W as Worker Process
+    participant S3 as S3 Storage
     participant M as Mistral OCR
 
-    C->>API: POST /api/documents/submit<br/>(multipart form data)
-    API->>S3: Upload original document
-    API->>DB: Create document record<br/>(status: pending)
-    API->>Q: Create job entry
-    API-->>C: Return document ID
+    Note over C,API: Document Submission
+    C->>API: POST /api/documents/submit<br/>(file, retentionDays)
+    API->>API: Detect MIME type
+    API->>S3: Upload file (multipart if >50MB)
+    API->>DB: INSERT document (status=pending)
+    API->>DB: INSERT job (type=convert, status=pending)
+    API-->>C: 200 OK {id, status: pending}
 
-    Note over Q,W: Async Processing
+    Note over JP,W: Async Job Processing
+    JP->>DB: Check for pending jobs
+    JP->>W: Signal "process" (no job ID)
     
-    W->>Q: Poll for jobs
-    Q-->>W: Return pending job
-    W->>DB: Update status: processing
-    W->>S3: Retrieve document
-    W->>M: Send for OCR/conversion
-    M-->>W: Return markdown content
-    W->>DB: Store converted content<br/>Update usage records
-    W->>DB: Update status: completed
+    W->>DB: BEGIN TRANSACTION
+    W->>DB: SELECT pending job (LIMIT 1)
+    W->>DB: UPDATE job SET status=processing,<br/>worker_id=W, attempts=attempts+1
+    W->>DB: COMMIT (atomic claim)
+    
+    alt Job Claimed Successfully
+        W->>DB: UPDATE document SET status=processing
+        W->>S3: Download file (stream if >10MB)
+        W->>W: Save to ./data/tmp/ if large
+        W->>M: POST /v1/chat/completions<br/>(vision model + file)
+        M-->>W: Response with markdown content
+        W->>DB: UPDATE document SET<br/>content=markdown, status=completed
+        W->>DB: INSERT usage record<br/>(tokens, cost)
+        W->>DB: UPDATE job SET<br/>status=completed, completedAt=now
+        W->>W: Clean up temp file
+        W-->>JP: completed
+    else Job Processing Failed
+        W->>DB: failJob(id, error)
+        alt attempts < maxAttempts
+            W->>DB: UPDATE job SET status=pending,<br/>scheduledAt=now+backoff
+            Note over W,DB: Retry with exponential backoff<br/>(5s, 10s, 20s)
+        else attempts >= maxAttempts
+            W->>DB: UPDATE job SET status=failed,<br/>completedAt=now
+            W->>DB: UPDATE document SET status=failed
+        end
+        W-->>JP: failed
+    end
 
-    Note over C,API: Later...
-    
+    Note over C,API: Status Check & Download
     C->>API: GET /api/documents/status/{id}
-    API->>DB: Query document status
-    API-->>C: Return status
+    API->>DB: SELECT document WHERE id={id}
+    API-->>C: {status, error?, metadata?}
 
     C->>API: GET /api/documents/{id}
-    API->>DB: Retrieve converted content
-    API-->>C: Return markdown
+    API->>DB: SELECT content WHERE id={id}
+    alt status=completed
+        API-->>C: 200 OK (markdown text)
+    else status=processing
+        API-->>C: 202 Accepted {status: processing}
+    else status=failed
+        API-->>C: 500 Error {error}
+    end
 ```
 
-## Setup
+### Worker Lifecycle & Job States
 
-1. Install dependencies:
+```mermaid
+stateDiagram-v2
+    [*] --> pending: Job Created
+    pending --> processing: Worker Claims (atomic)
+    
+    processing --> completed: Success
+    processing --> pending: Worker Died<br/>(attempts < max)
+    processing --> failed: Worker Died<br/>(attempts >= max)
+    processing --> pending: Error + Retry<br/>(attempts < max)
+    processing --> failed: Error + No Retry<br/>(attempts >= max)
+    
+    completed --> [*]
+    failed --> [*]
+    
+    note right of processing
+        Worker tracks active job
+        Heartbeat every 30s
+        Cleanup runs every 30s
+    end note
+```
+
+## Directory Structure
+
+```
+ilios/api/
+├── src/
+│   ├── db/
+│   │   ├── schema.ts              # Drizzle ORM schema definitions
+│   │   └── migrations/            # Database migrations
+│   ├── middleware/
+│   │   ├── auth.ts                # API key authentication
+│   │   └── error.ts               # Global error handler
+│   ├── routes/
+│   │   ├── documents.ts           # Document endpoints
+│   │   └── usage.ts               # Usage tracking endpoints
+│   ├── services/
+│   │   ├── database.ts            # SQLite/Turso database service
+│   │   ├── job-processor-spawn.ts # Worker process manager
+│   │   ├── mistral.ts             # Mistral OCR integration
+│   │   └── s3.ts                  # S3-compatible storage
+│   ├── workers/
+│   │   └── job-worker.ts          # Worker process (claims & processes jobs)
+│   ├── index.ts                   # Main server entry point
+│   └── openapi.ts                 # OpenAPI/Swagger spec
+├── data/                          # gitignored, auto-created
+│   ├── ilios.db                   # Local SQLite database (shared)
+│   ├── ilios.db-shm               # WAL shared memory
+│   ├── ilios.db-wal               # WAL write-ahead log
+│   └── tmp/                       # Temp files for large uploads
+├── drizzle.config.ts              # Drizzle Kit configuration
+├── package.json
+├── tsconfig.json
+├── CLAUDE.md                      # AI assistant context
+└── README.md
+```
+
+## Quick Setup
+
+### Prerequisites
+- [Bun](https://bun.sh) v1.0+ (runtime & package manager)
+- [Mistral API Key](https://console.mistral.ai/) (for OCR)
+- [Tigris/S3 credentials](https://www.tigrisdata.com/) (for storage)
+- Optional: [Turso account](https://turso.tech/) (for edge sync)
+
+### Installation
+
+1. **Clone and install dependencies:**
 ```bash
+git clone <repo-url>
+cd ilios/api
 bun install
 ```
 
-2. Configure environment variables:
+2. **Configure environment:**
 ```bash
 cp .env.example .env
-# Edit .env with your credentials
 ```
 
-3. Setup database:
+Edit `.env` with your credentials:
 ```bash
-# Generate database types
-bun run db:generate
-# Push schema changes
+# Required - Mistral OCR
+MISTRAL_API_KEY=your_mistral_api_key_here
+
+# Required - S3 Storage (Tigris example)
+AWS_ACCESS_KEY_ID=tid_xxx
+AWS_SECRET_ACCESS_KEY=tsec_xxx
+AWS_ENDPOINT_URL_S3=https://fly.storage.tigris.dev
+S3_BUCKET=your-bucket-name
+
+# Optional - API Key Authentication
+API_KEY=your_secure_api_key_here
+
+# Optional - Turso Sync (omit for local-only mode)
+USE_EMBEDDED_REPLICA=false  # true to enable Turso sync
+# TURSO_DATABASE_URL=libsql://your-db.turso.io
+# TURSO_AUTH_TOKEN=your-token
+# TURSO_SYNC_INTERVAL=60
+
+# Optional - Database
+LOCAL_DB_PATH=./data/ilios.db
+```
+
+3. **Initialize database:**
+```bash
 bun run db:push
 ```
-Or `bun run scripts/setup-db.ts`
 
-4. Start the server:
+4. **Start server:**
 ```bash
 bun run dev
 ```
 
-## API Endpoints
+Server starts at `http://localhost:1337`
+- API docs: `http://localhost:1337/docs` (Swagger UI)
+- Health check: `http://localhost:1337/health`
 
-### Submit Document
+### API Key Setup
+
+If you set `API_KEY` in your `.env`, all requests to `/api/*` must include:
+
 ```bash
-POST /api/documents/submit
-Content-Type: multipart/form-data
+# Header-based auth
+curl -H "Authorization: Bearer your_api_key_here" \
+  -F "file=@document.pdf" \
+  http://localhost:1337/api/documents/submit
 
-file: <file>
-retentionDays: 365 (optional, 1-3650)
+# Or query param
+curl -F "file=@document.pdf" \
+  "http://localhost:1337/api/documents/submit?apiKey=your_api_key_here"
 ```
 
-### Check Status
+To disable authentication, remove or comment out `API_KEY` in `.env`.
+
+## API Usage
+
+### Submit Document for Conversion
+
 ```bash
-GET /api/documents/status/:id
+curl -X POST http://localhost:1337/api/documents/submit \
+  -H "Authorization: Bearer your_api_key" \
+  -F "file=@path/to/document.pdf" \
+  -F "retentionDays=365"
 ```
 
-### Download Converted Document
-```bash
-GET /api/documents/:id
-GET /api/documents/:id?format=json
+**Response:**
+```json
+{
+  "id": "cm5xabc123...",
+  "status": "pending",
+  "fileName": "document.pdf",
+  "fileSize": 1234567,
+  "retentionDays": 365,
+  "createdAt": "2024-01-15T10:30:00.000Z"
+}
 ```
 
-### Get Original File
+### Check Document Status
+
 ```bash
-GET /api/documents/:id/original
+curl http://localhost:1337/api/documents/status/cm5xabc123 \
+  -H "Authorization: Bearer your_api_key"
 ```
 
-### Usage Summary
-```bash
-GET /api/usage/summary?startDate=2024-01-01T00:00:00Z&endDate=2024-12-31T23:59:59Z
+**Response (Processing):**
+```json
+{
+  "id": "cm5xabc123...",
+  "status": "processing",
+  "fileName": "document.pdf"
+}
 ```
 
-### Usage Breakdown
+**Response (Completed):**
+```json
+{
+  "id": "cm5xabc123...",
+  "status": "completed",
+  "fileName": "document.pdf",
+  "metadata": {
+    "pages": 10,
+    "processingTimeMs": 5432,
+    "model": "pixtral-12b-2409"
+  }
+}
+```
+
+### Download Converted Markdown
+
 ```bash
-GET /api/usage/breakdown
+# Get raw markdown
+curl http://localhost:1337/api/documents/cm5xabc123 \
+  -H "Authorization: Bearer your_api_key"
+
+# Get JSON response
+curl http://localhost:1337/api/documents/cm5xabc123?format=json \
+  -H "Authorization: Bearer your_api_key"
+```
+
+**Response (markdown):**
+```markdown
+# Document Title
+
+Document content in markdown format...
+```
+
+**Response (JSON):**
+```json
+{
+  "id": "cm5xabc123...",
+  "content": "# Document Title\n\nDocument content...",
+  "metadata": {...}
+}
+```
+
+### Get Original Document
+
+```bash
+curl http://localhost:1337/api/documents/cm5xabc123/original \
+  -H "Authorization: Bearer your_api_key" \
+  -o original_document.pdf
+```
+
+### Usage Tracking
+
+```bash
+# Summary for date range
+curl "http://localhost:1337/api/usage/summary?startDate=2024-01-01T00:00:00Z&endDate=2024-12-31T23:59:59Z" \
+  -H "Authorization: Bearer your_api_key"
+
+# Detailed breakdown
+curl http://localhost:1337/api/usage/breakdown \
+  -H "Authorization: Bearer your_api_key"
+```
+
+**Response (Summary):**
+```json
+{
+  "totalDocuments": 150,
+  "totalOperations": 150,
+  "totalInputTokens": 50000,
+  "totalOutputTokens": 25000,
+  "totalCostCents": 13000
+}
 ```
 
 ## Environment Variables
 
-- `TURSO_DATABASE_URL`: Turso database URL (remote sync target)
-- `TURSO_AUTH_TOKEN`: Turso authentication token
+- `USE_EMBEDDED_REPLICA`: Set to 'true' for Turso sync, 'false' for local-only (default: false)
+- `LOCAL_DB_PATH`: Local SQLite file path (default: ./data/ilios.db)
+- `TURSO_DATABASE_URL`: Turso database URL (only if USE_EMBEDDED_REPLICA=true)
+- `TURSO_AUTH_TOKEN`: Turso authentication token (only if USE_EMBEDDED_REPLICA=true)
 - `TURSO_SYNC_INTERVAL`: Sync interval in seconds (default: 60)
-- `LOCAL_DB_PATH`: Local SQLite file path (default: ./src/db/convert-docs.db)
 - `DB_ENCRYPTION_KEY`: Optional encryption key for local database
-- `AWS_ACCESS_KEY_ID`: S3 access key (works with Tigris)
+- `AWS_ACCESS_KEY_ID`: S3 access key
 - `AWS_SECRET_ACCESS_KEY`: S3 secret key
-- `AWS_ENDPOINT_URL_S3`: S3 endpoint (default: https://fly.storage.tigris.dev)
+- `AWS_ENDPOINT_URL_S3`: S3 endpoint URL
 - `S3_BUCKET`: S3 bucket name
 - `MISTRAL_API_KEY`: Mistral API key for OCR
 - `API_KEY`: Optional API key for authentication
 
-## Embedded Replicas
+## Database Modes
 
-This API uses Turso's embedded replicas for optimal performance:
+### Local-Only (Default)
+Uses local SQLite database only - no remote sync required:
+```bash
+USE_EMBEDDED_REPLICA=false
+LOCAL_DB_PATH=./data/ilios.db
+```
 
-- **Local First**: All reads are served from the local SQLite file (microsecond latency)
-- **Auto Sync**: Writes go to remote Turso and sync back automatically
-- **Resilient**: Works offline, syncs when connection restored
-- **Encrypted**: Optional encryption at rest for local database
+### Turso Embedded Replica (Optional)
+Enable Turso sync for edge-optimized performance:
+```bash
+USE_EMBEDDED_REPLICA=true
+LOCAL_DB_PATH=./data/ilios.db
+TURSO_DATABASE_URL=libsql://your-database.turso.io
+TURSO_AUTH_TOKEN=your-token
+```
 
-The local database file is stored at `./src/db/convert-docs.db` by default.
+Benefits of embedded replicas:
+- **Local First**: All reads from local SQLite (microsecond latency)
+- **Auto Sync**: Writes sync to Turso automatically
+- **Resilient**: Works offline, syncs when reconnected
+- **Encrypted**: Optional encryption at rest
 
 ## Database Schema
 
@@ -242,13 +500,129 @@ Example: Processing 1000 pages costs $1.30 with default 30% margin
 
 ## Development
 
-```bash
-# Generate database types
-bun run db:generate
+### Database Management
 
-# Push schema changes
+```bash
+# Push schema changes (first-time setup or schema updates)
 bun run db:push
 
-# View database
+# Generate migrations from schema
+bun run db:generate
+
+# Run migrations
+bun run db:migrate
+
+# View database in Drizzle Studio
 bun run db:studio
 ```
+
+### Project Scripts
+
+```bash
+bun run dev          # Start dev server with hot reload
+bun run db:push      # Sync schema to database
+bun run db:generate  # Generate migration files
+bun run db:studio    # Open Drizzle Studio
+```
+
+### Worker Architecture
+
+The API uses a multi-worker architecture for async job processing:
+
+- **Main Process**: Handles HTTP requests, manages worker lifecycle
+- **Worker Processes**: Spawned via Bun, atomically claim and process jobs
+- **Shared Database**: All processes use `./data/ilios.db` with WAL mode
+- **Atomic Job Claiming**: Transaction-based claiming prevents race conditions
+- **Automatic Retries**: Failed jobs retry with exponential backoff (5s, 10s, 20s)
+- **Graceful Shutdown**: Workers wait for active jobs before exiting
+
+**Job Processing Flow:**
+1. Main process signals workers when jobs are available
+2. Workers atomically claim jobs using `claimNextJob()` transaction
+3. Worker processes job (download → OCR → store result)
+4. On error: Job retries if `attempts < maxAttempts`, else marked `failed`
+5. On worker crash: Orphaned jobs cleaned up and retried/failed based on attempts
+
+### Monitoring & Debugging
+
+**Check worker status:**
+```bash
+sqlite3 ./data/ilios.db "SELECT * FROM workers;"
+```
+
+**Check job queue:**
+```bash
+sqlite3 ./data/ilios.db "SELECT id, status, type, attempts, error FROM job_queue;"
+```
+
+**View logs:**
+```bash
+# Workers log to stderr with prefix "Worker {id} error:"
+# Main process logs job distribution and worker lifecycle
+```
+
+**Cleanup stuck jobs manually:**
+```bash
+bun -e "
+import { DatabaseService } from './src/services/database.ts';
+const db = new DatabaseService();
+await db.cleanupOrphanedJobs();
+await db.close();
+"
+```
+
+## Production Deployment
+
+### Environment Considerations
+
+1. **Enable Turso Sync** for multi-region edge performance:
+```bash
+USE_EMBEDDED_REPLICA=true
+TURSO_DATABASE_URL=libsql://your-db.turso.io
+TURSO_AUTH_TOKEN=your-token
+```
+
+2. **Configure Worker Count** based on CPU cores:
+```typescript
+// src/index.ts
+jobProcessor = new JobProcessorSpawn(db, 4); // 4 workers
+```
+
+3. **Set Reasonable Timeouts**:
+- Mistral OCR can take 30s+ for large documents
+- Configure reverse proxy timeouts accordingly
+
+4. **Monitor Disk Space**:
+- `./data/tmp/` stores large files during processing
+- Ensure adequate disk space (10GB+ recommended)
+
+5. **Secure API Keys**:
+- Use strong, randomly generated API keys
+- Rotate keys periodically
+- Consider per-user API keys for tracking
+
+## Troubleshooting
+
+**Workers exit immediately:**
+- Check for syntax errors in worker code
+- Ensure `./data/tmp/` directory exists and is writable
+- Verify database file permissions
+
+**SQLITE_BUSY errors:**
+- WAL mode should handle concurrent access
+- Check that `PRAGMA journal_mode=WAL` is set
+- Reduce worker count if excessive contention
+
+**Jobs stuck in processing:**
+- Run cleanup: `await db.cleanupOrphanedJobs()`
+- Check worker heartbeat timestamps
+- Verify workers are running: `ps aux | grep job-worker`
+
+**Large files failing:**
+- Files >10MB stream to `./data/tmp/`
+- Ensure sufficient disk space
+- Check temp directory permissions
+
+## License
+
+MIT

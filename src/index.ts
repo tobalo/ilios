@@ -25,10 +25,14 @@ app.get('/', (c) => {
     name: 'Convert Docs API',
     version: '2.0.0',
     endpoints: {
+      uploadUrl: 'POST /api/documents/upload-url',
+      uploadComplete: 'POST /api/documents/upload-complete/:id',
       submit: 'POST /api/documents/submit',
       status: 'GET /api/documents/status/:id',
       download: 'GET /api/documents/:id',
-      usage: 'GET /api/usage/summary',
+      original: 'GET /api/documents/:id/original',
+      usageSummary: 'GET /api/usage/summary',
+      usageBreakdown: 'GET /api/usage/breakdown',
     },
   });
 });
@@ -68,13 +72,16 @@ app.get('/health', async (c) => {
 });
 
 const initializeServices = (env: any) => {
+  const useEmbeddedReplica = env.USE_EMBEDDED_REPLICA !== 'false';
+  
   const db = new DatabaseService(
-    env.TURSO_DATABASE_URL,
-    env.TURSO_AUTH_TOKEN,
+    useEmbeddedReplica ? env.TURSO_DATABASE_URL : undefined,
+    useEmbeddedReplica ? env.TURSO_AUTH_TOKEN : undefined,
     {
-      localDbPath: env.LOCAL_DB_PATH || './src/db/convert-docs.db',
+      localDbPath: env.LOCAL_DB_PATH || './data/ilios.db',
       syncIntervalSeconds: parseInt(env.TURSO_SYNC_INTERVAL || '60'),
-      encryptionKey: env.DB_ENCRYPTION_KEY
+      encryptionKey: env.DB_ENCRYPTION_KEY,
+      useEmbeddedReplica,
     }
   );
 
@@ -113,39 +120,42 @@ app.route('/api/usage', usageRoutes);
 
 // Start job processor
 let jobProcessor: JobProcessorSpawn | null = null;
+let isJobProcessorStarted = false;
 
 const startJobProcessor = async () => {
-  if (!jobProcessor) {
-    // Clean up jobs from workers that no longer exist
+  if (!jobProcessor && !isJobProcessorStarted) {
+    isJobProcessorStarted = true;
+    
     await db.cleanupOrphanedJobs();
     
-    jobProcessor = new JobProcessorSpawn(db, 2); // 2 worker processes
+    jobProcessor = new JobProcessorSpawn(db, 2);
     await jobProcessor.start();
     console.log('Job processor started with 2 workers');
   }
 };
 
-// Start job processor when server starts
 startJobProcessor();
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  if (jobProcessor) {
-    await jobProcessor.stop();
-  }
-  await db.close();
-  process.exit(0);
-});
+// Graceful shutdown handler
+let isShuttingDown = false;
 
-process.on('SIGINT', async () => {
-  console.log('SIGINT received, shutting down gracefully');
+const gracefulShutdown = async (signal: string) => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  
+  console.log(`${signal} received, shutting down gracefully`);
+  
   if (jobProcessor) {
     await jobProcessor.stop();
+    jobProcessor = null;
   }
+  
   await db.close();
   process.exit(0);
-});
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 export default {
   port: process.env.PORT ? parseInt(process.env.PORT) : 1337,

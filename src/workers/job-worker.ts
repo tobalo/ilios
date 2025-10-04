@@ -7,7 +7,6 @@ import { Bun } from 'bun';
 
 interface WorkerMessage {
   type: 'process' | 'shutdown';
-  jobId?: string;
 }
 
 interface WorkerResponse {
@@ -23,19 +22,24 @@ class JobWorker {
   private tempDir: string;
   private workerId: string;
   private heartbeatInterval?: Timer;
+  private isShuttingDown = false;
+  private activeJobId: string | null = null;
 
   constructor() {
     const env = process.env as any;
     this.workerId = env.WORKER_ID || `worker-${process.pid}`;
     
     try {
+      const useEmbeddedReplica = env.USE_EMBEDDED_REPLICA !== 'false';
+      
       this.db = new DatabaseService(
-        env.TURSO_DATABASE_URL!,
-        env.TURSO_AUTH_TOKEN!,
+        useEmbeddedReplica ? env.TURSO_DATABASE_URL : undefined,
+        useEmbeddedReplica ? env.TURSO_AUTH_TOKEN : undefined,
         {
-          localDbPath: env.LOCAL_DB_PATH || './src/db/convert-docs.db',
+          localDbPath: env.LOCAL_DB_PATH || './data/ilios.db',
           syncIntervalSeconds: parseInt(env.TURSO_SYNC_INTERVAL || '60'),
-          encryptionKey: env.DB_ENCRYPTION_KEY
+          encryptionKey: env.DB_ENCRYPTION_KEY,
+          useEmbeddedReplica,
         }
       );
 
@@ -48,14 +52,11 @@ class JobWorker {
 
       this.mistral = new MistralService(env.MISTRAL_API_KEY!);
       
-      // Create temp directory for large file processing
-      this.tempDir = './tmp/convert-api-worker';
+      this.tempDir = './data/tmp';
       try {
-        const result = Bun.spawnSync(['mkdir', '-p', this.tempDir]);
-        if (result.exitCode !== 0) {
-          console.error(`Failed to create temp directory: ${result.stderr?.toString()}`);
-        } else {
-          console.log(`Created temp directory: ${this.tempDir}`);
+        const fs = require('fs');
+        if (!fs.existsSync(this.tempDir)) {
+          fs.mkdirSync(this.tempDir, { recursive: true });
         }
       } catch (error) {
         console.error(`Error creating temp directory: ${error}`);
@@ -66,30 +67,47 @@ class JobWorker {
     }
   }
 
-  async processJob(jobId: string) {
-    const job = await this.db.getJob(jobId);
+  async processNextJob() {
+    if (this.isShuttingDown) {
+      return false;
+    }
+
+    // Atomically claim next available job
+    const job = await this.db.claimNextJob(this.workerId);
+    
     if (!job) {
-      throw new Error(`Job ${jobId} not found`);
+      return false; // No jobs available
     }
 
-    console.log(`Worker processing job ${job.id} of type ${job.type}`);
+    this.activeJobId = job.id;
+    
+    try {
+      console.log(`Worker ${this.workerId} processing job ${job.id} (type: ${job.type}, attempt ${job.attempts}/${job.maxAttempts})`);
 
-    switch (job.type) {
-      case 'convert':
-        await this.processConvertJob(job);
-        break;
-      case 'archive':
-        await this.processArchiveJob(job);
-        break;
-      case 'upload':
-        // Upload jobs are handled by the main process, not workers
-        console.log(`Skipping upload job ${job.id} - handled by main process`);
-        break;
-      default:
-        throw new Error(`Unknown job type: ${job.type}`);
+      switch (job.type) {
+        case 'convert':
+          await this.processConvertJob(job);
+          break;
+        case 'archive':
+          await this.processArchiveJob(job);
+          break;
+        case 'upload':
+          console.log(`Skipping upload job ${job.id} - handled by main process`);
+          break;
+        default:
+          throw new Error(`Unknown job type: ${job.type}`);
+      }
+
+      await this.db.completeJob(job.id);
+      return true;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`Job ${job.id} failed:`, errorMessage);
+      await this.db.failJob(job.id, errorMessage);
+      return true;
+    } finally {
+      this.activeJobId = null;
     }
-
-    await this.db.completeJob(job.id);
   }
 
   private async processConvertJob(job: any) {
@@ -105,28 +123,23 @@ class JobWorker {
 
       const startTime = Date.now();
       
-      // For large files, download to temp file instead of memory
       const fileMetadata = await this.s3.getFileMetadata(document.s3Key);
-      const isLargeFile = fileMetadata.size > 10 * 1024 * 1024; // 10MB threshold
+      const isLargeFile = fileMetadata.size > 10 * 1024 * 1024;
       
       let fileData: ArrayBuffer;
       
       if (isLargeFile) {
-        // Stream large files directly to disk using Bun's optimized I/O
-        tempFilePath = `${this.tempDir}/${document.id}-${Date.now()}.tmp`;
+        const fs = await import('fs/promises');
+        tempFilePath = `./data/tmp/${document.id}-${Date.now()}.tmp`;
         
         console.log(`[Worker] Streaming large file to temp: ${tempFilePath}, s3Key: ${document.s3Key}`);
         
-        // Use Bun's streaming capabilities to download directly to file
         await this.s3.streamToFile(document.s3Key, tempFilePath);
         
         console.log(`[Worker] File downloaded to temp, reading into memory`);
         
-        // Read file for Mistral processing using Bun.file
-        const file = Bun.file(tempFilePath);
-        fileData = await file.arrayBuffer();
+        fileData = await fs.readFile(tempFilePath);
       } else {
-        // Small files can be handled in memory
         fileData = await this.s3.downloadAsBuffer(document.s3Key);
       }
       
@@ -169,10 +182,10 @@ class JobWorker {
       await this.db.failJob(job.id, errorMessage);
       throw error;
     } finally {
-      // Cleanup temp file
       if (tempFilePath) {
         try {
-          await Bun.file(tempFilePath).delete();
+          const fs = await import('fs/promises');
+          await fs.unlink(tempFilePath);
         } catch {}
       }
     }
@@ -206,62 +219,93 @@ class JobWorker {
   async start() {
     console.log(`Worker ${this.workerId} started and ready to process jobs`);
     
-    // Register worker with database
     await this.db.registerWorker(this.workerId, process.pid, require('os').hostname());
     
-    // Start heartbeat
     this.heartbeatInterval = setInterval(async () => {
-      await this.db.updateWorkerHeartbeat(this.workerId);
-      const response: WorkerResponse = { type: 'heartbeat' };
-      console.log(JSON.stringify(response));
-    }, 30000); // Every 30 seconds
+      try {
+        await this.db.updateWorkerHeartbeat(this.workerId);
+        const response: WorkerResponse = { type: 'heartbeat' };
+        console.log(JSON.stringify(response));
+      } catch (error) {
+        console.error(`[Worker ${this.workerId}] Heartbeat failed:`, error instanceof Error ? error.message : error);
+      }
+    }, 30000);
     
-    // Send ready message to parent
     const response: WorkerResponse = { type: 'ready' };
     console.log(JSON.stringify(response));
 
-    // Listen for messages from parent process
-    for await (const line of console) {
-      try {
-        const message: WorkerMessage = JSON.parse(line);
+    process.stdin.setEncoding('utf8');
+    process.stdin.resume();
+    
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    process.stdin.on('data', async (chunk: Buffer | string) => {
+      if (this.isShuttingDown) return;
+      
+      const data = typeof chunk === 'string' ? chunk : decoder.decode(chunk);
+      buffer += data;
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
         
-        if (message.type === 'shutdown') {
-          console.log('Worker shutting down');
-          await this.shutdown();
-          process.exit(0);
-        }
-        
-        if (message.type === 'process' && message.jobId) {
-          try {
-            await this.processJob(message.jobId);
-            const response: WorkerResponse = { 
-              type: 'completed', 
-              jobId: message.jobId 
-            };
-            console.log(JSON.stringify(response));
-          } catch (error) {
-            const response: WorkerResponse = { 
-              type: 'failed', 
-              jobId: message.jobId,
-              error: error instanceof Error ? error.message : 'Unknown error'
-            };
-            console.log(JSON.stringify(response));
+        try {
+          const message: WorkerMessage = JSON.parse(line);
+          
+          if (message.type === 'shutdown') {
+            console.log('Shutdown signal received');
+            await this.shutdown();
+            process.exit(0);
           }
+          
+          if (message.type === 'process') {
+            // Process jobs until queue is empty
+            let processedAny = false;
+            while (await this.processNextJob()) {
+              processedAny = true;
+            }
+            
+            if (processedAny) {
+              const response: WorkerResponse = { type: 'completed' };
+              console.log(JSON.stringify(response));
+            }
+          }
+        } catch (error) {
+          console.error('Worker message parse error:', error);
         }
-      } catch (error) {
-        console.error('Worker error:', error);
       }
-    }
+    });
+
+    process.stdin.on('end', async () => {
+      console.log('stdin ended, shutting down worker');
+      await this.shutdown();
+      process.exit(0);
+    });
   }
   
   async shutdown() {
-    // Stop heartbeat
+    console.log(`Worker ${this.workerId} starting graceful shutdown...`);
+    this.isShuttingDown = true;
+    
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
     }
     
-    // Mark worker as stopping
     await this.db.updateWorkerStatus(this.workerId, 'stopping');
+    
+    if (this.activeJobId) {
+      console.log(`Waiting for active job ${this.activeJobId} to complete...`);
+      let attempts = 0;
+      while (this.activeJobId && attempts < 50) {
+        await Bun.sleep(100);
+        attempts++;
+      }
+    }
+    
+    await this.db.close();
+    console.log(`Worker ${this.workerId} shutdown complete`);
   }
 }
 

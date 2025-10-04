@@ -1,10 +1,11 @@
 import { DatabaseService } from './database';
+import { jobQueue } from '../db/schema';
 import { Subprocess } from 'bun';
+import { eq, and, sql } from 'drizzle-orm';
 import * as os from 'os';
 
 interface WorkerMessage {
   type: 'process' | 'shutdown';
-  jobId?: string;
 }
 
 interface WorkerResponse {
@@ -19,6 +20,7 @@ export class JobProcessorSpawn {
   private workerCount: number;
   private isRunning = false;
   private interval?: Timer;
+  private cleanupInterval?: Timer;
   private workerPath: string;
 
   constructor(
@@ -35,19 +37,22 @@ export class JobProcessorSpawn {
     
     this.isRunning = true;
     
-    // Spawn worker processes
     await this.spawnWorkers();
     
-    // Start job distribution
     this.interval = setInterval(async () => {
       await this.distributeJobs();
     }, intervalMs);
     
-    // Initial job distribution
+    // Periodic cleanup of orphaned jobs every 30 seconds
+    this.cleanupInterval = setInterval(async () => {
+      await this.db.cleanupOrphanedJobs();
+    }, 30000);
+    
     await this.distributeJobs();
   }
 
   async stop() {
+    console.log('Stopping job processor...');
     this.isRunning = false;
     
     if (this.interval) {
@@ -55,12 +60,19 @@ export class JobProcessorSpawn {
       this.interval = undefined;
     }
     
-    // Shutdown all workers
-    for (const [id, worker] of this.workers) {
-      await this.shutdownWorker(id, worker);
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = undefined;
     }
     
+    const shutdownPromises = Array.from(this.workers.entries()).map(
+      ([id, worker]) => this.shutdownWorker(id, worker)
+    );
+    
+    await Promise.all(shutdownPromises);
+    
     this.workers.clear();
+    console.log('All workers stopped');
   }
 
   private async spawnWorkers() {
@@ -79,29 +91,54 @@ export class JobProcessorSpawn {
       stdout: 'pipe',
       stderr: 'pipe',
       stdin: 'pipe',
+      ipc: undefined,
     });
 
     this.workers.set(workerId, worker);
 
-    // Register worker in database
     await this.db.registerWorker(workerId, worker.pid!, os.hostname());
 
-    // Handle worker output
     this.handleWorkerOutput(workerId, worker);
+    this.handleWorkerErrors(workerId, worker);
 
-    // Handle worker errors
     worker.exited.then(async (exitCode) => {
-      console.error(`Worker ${workerId} exited with code ${exitCode}`);
+      console.log(`Worker ${workerId} exited with code ${exitCode}`);
       this.workers.delete(workerId);
       
-      // Mark worker as dead in database
       await this.db.updateWorkerStatus(workerId, 'dead');
       
-      // Respawn worker if still running
+      // Clean up any jobs that were being processed by this worker
+      await this.db.cleanupOrphanedJobs();
+      
       if (this.isRunning) {
+        console.log(`Respawning worker ${workerId} in 5 seconds...`);
         setTimeout(() => this.spawnWorker(workerId), 5000);
       }
     });
+  }
+
+  private async handleWorkerErrors(workerId: string, worker: Subprocess) {
+    const reader = worker.stderr.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          console.error(`Worker ${workerId} error:`, line);
+        }
+      }
+    } catch (error) {
+      console.error(`Error reading worker ${workerId} stderr:`, error);
+    }
   }
 
   private async handleWorkerOutput(workerId: string, worker: Subprocess) {
@@ -142,15 +179,31 @@ export class JobProcessorSpawn {
   }
 
   private async shutdownWorker(workerId: string, worker: Subprocess) {
-    const message: WorkerMessage = { type: 'shutdown' };
-    worker.stdin.write(JSON.stringify(message) + '\n');
-    worker.stdin.end();
+    console.log(`Shutting down worker ${workerId}...`);
     
-    // Give worker time to shutdown gracefully
-    await Bun.sleep(1000);
-    
-    if (!worker.killed) {
-      worker.kill();
+    try {
+      // Send shutdown signal
+      const message: WorkerMessage = { type: 'shutdown' };
+      const messageStr = JSON.stringify(message) + '\n';
+      worker.stdin.write(messageStr);
+      
+      // Wait for graceful shutdown (5 seconds max)
+      const timeout = new Promise((resolve) => setTimeout(resolve, 5000));
+      await Promise.race([worker.exited, timeout]);
+      
+      // Force kill if still running
+      if (!worker.killed) {
+        console.log(`Force killing worker ${workerId}`);
+        worker.kill('SIGKILL');
+      }
+      
+      // Update worker status in database
+      await this.db.updateWorkerStatus(workerId, 'dead');
+    } catch (error) {
+      console.error(`Error shutting down worker ${workerId}:`, error);
+      try {
+        worker.kill('SIGKILL');
+      } catch {}
     }
   }
 
@@ -158,31 +211,37 @@ export class JobProcessorSpawn {
     if (!this.isRunning) return;
 
     try {
-      // Get available workers
       const availableWorkers = Array.from(this.workers.entries())
         .filter(([_, worker]) => !worker.killed);
 
       if (availableWorkers.length === 0) {
-        console.warn('No available workers');
         return;
       }
 
-      // Get pending jobs up to the number of available workers
-      const jobs = await this.db.getNextJobs(availableWorkers.length);
+      // Check if there are pending jobs
+      const pendingJobsCount = await this.db.db.select({ count: sql<number>`count(*)` })
+        .from(jobQueue)
+        .where(
+          and(
+            eq(jobQueue.status, 'pending'),
+            sql`${jobQueue.scheduledAt} <= unixepoch()`
+          )
+        );
       
-      for (let i = 0; i < jobs.length && i < availableWorkers.length; i++) {
-        const job = jobs[i];
-        const [workerId, worker] = availableWorkers[i];
+      if (!pendingJobsCount[0] || pendingJobsCount[0].count === 0) {
+        return;
+      }
+
+      // Signal workers to check for jobs (they'll claim atomically)
+      for (const [workerId, worker] of availableWorkers) {
+        const message: WorkerMessage = { type: 'process' };
         
-        console.log(`Assigning job ${job.id} to worker ${workerId}`);
-        
-        const message: WorkerMessage = { 
-          type: 'process', 
-          jobId: job.id 
-        };
-        
-        worker.stdin.write(JSON.stringify(message) + '\n');
-        worker.stdin.flush();
+        try {
+          worker.stdin.write(JSON.stringify(message) + '\n');
+          await worker.stdin.flush();
+        } catch (error) {
+          console.error(`Failed to signal worker ${workerId}:`, error);
+        }
       }
     } catch (error) {
       console.error('Job distribution error:', error);

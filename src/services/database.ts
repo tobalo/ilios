@@ -11,43 +11,79 @@ export class DatabaseService {
   private client;
   private syncInterval: NodeJS.Timeout | null = null;
 
-  constructor(syncUrl: string, authToken: string, options?: {
+  constructor(syncUrl?: string, authToken?: string, options?: {
     localDbPath?: string;
     syncIntervalSeconds?: number;
     encryptionKey?: string;
+    useEmbeddedReplica?: boolean;
   }) {
-    // Default to local file in src/db directory
-    const localDbPath = options?.localDbPath || path.join(process.cwd(), 'src/db/convert-docs.db');
+    const localDbPath = options?.localDbPath || path.join(process.cwd(), 'data/ilios.db');
+    const useEmbeddedReplica = options?.useEmbeddedReplica ?? true;
     
-    console.log(`Initializing embedded replica with local db: ${localDbPath}`);
-    
-    // Create client with embedded replica configuration
-    this.client = createClient({
-      url: `file:${localDbPath}`,
-      syncUrl: syncUrl,
-      authToken: authToken,
-      syncInterval: options?.syncIntervalSeconds || 60, // Default 60 seconds
-      encryptionKey: options?.encryptionKey,
-    });
-    
-    this.db = drizzle(this.client);
-    
-    // Initial sync
-    this.syncDatabase().catch(err => {
-      console.error('Initial sync failed:', err);
-    });
-    
-    // Set up periodic manual sync as backup (in case automatic sync has issues)
-    if (options?.syncIntervalSeconds) {
-      this.syncInterval = setInterval(() => {
-        this.syncDatabase().catch(err => {
-          console.error('Periodic sync failed:', err);
-        });
-      }, options.syncIntervalSeconds * 1000);
+    if (useEmbeddedReplica && syncUrl && authToken) {
+      console.log(`Initializing embedded replica with local db: ${localDbPath}`);
+      
+      this.client = createClient({
+        url: `file:${localDbPath}`,
+        syncUrl: syncUrl,
+        authToken: authToken,
+        syncInterval: options?.syncIntervalSeconds || 60,
+        encryptionKey: options?.encryptionKey,
+      });
+      
+      this.db = drizzle(this.client);
+      
+      this.initializeDatabase().catch(err => {
+        console.error('Failed to initialize database:', err);
+      });
+      
+      this.syncDatabase().catch(err => {
+        console.error('Initial sync failed:', err);
+      });
+      
+      if (options?.syncIntervalSeconds) {
+        this.syncInterval = setInterval(() => {
+          this.syncDatabase().catch(err => {
+            console.error('Periodic sync failed:', err);
+          });
+        }, options.syncIntervalSeconds * 1000);
+      }
+    } else {
+      console.log(`Initializing local database: ${localDbPath}`);
+      
+      this.client = createClient({
+        url: `file:${localDbPath}`,
+        encryptionKey: options?.encryptionKey,
+      });
+      
+      this.db = drizzle(this.client);
+      
+      this.initializeDatabase().catch(err => {
+        console.error('Failed to initialize database:', err);
+      });
+    }
+  }
+  
+  private async initializeDatabase() {
+    try {
+      // Use drizzle's sql template for better compatibility
+      await this.db.run(sql`PRAGMA journal_mode = WAL`);
+      await this.db.run(sql`PRAGMA busy_timeout = 5000`);
+      await this.db.run(sql`PRAGMA synchronous = NORMAL`);
+      
+      // Verify settings
+      const timeout = await this.db.get(sql`PRAGMA busy_timeout`);
+      console.log(`Database initialized: WAL mode, busy_timeout=${(timeout as any).timeout}ms`);
+    } catch (error) {
+      console.warn('Failed to set database PRAGMAs:', error);
     }
   }
   
   async syncDatabase() {
+    if (!this.client.sync) {
+      return;
+    }
+    
     try {
       console.log('Syncing embedded replica with remote database...');
       await this.client.sync();
@@ -202,37 +238,60 @@ export class DatabaseService {
     return job;
   }
 
-  // Clean up jobs from workers that no longer exist
   async cleanupOrphanedJobs() {
-    // Get all active worker IDs
     const activeWorkers = await this.db.select({ id: workers.id })
       .from(workers)
       .where(eq(workers.status, 'active'));
     
     const activeWorkerIds = activeWorkers.map(w => w.id);
     
-    // Reset jobs assigned to non-existent workers
-    const result = await this.db.update(jobQueue)
-      .set({
-        status: 'pending',
-        workerId: null,
-        startedAt: null,
-      })
+    // Find orphaned jobs (null worker_id or assigned to dead workers)
+    const orphanedJobs = await this.db.select()
+      .from(jobQueue)
       .where(
         and(
           eq(jobQueue.status, 'processing'),
-          activeWorkerIds.length > 0 
-            ? notInArray(jobQueue.workerId, activeWorkerIds)
-            : isNotNull(jobQueue.workerId)
+          activeWorkerIds.length > 0
+            ? sql`(${jobQueue.workerId} IS NULL OR ${jobQueue.workerId} NOT IN (${sql.join(activeWorkerIds.map(id => sql`${id}`), sql`, `)}))`
+            : sql`TRUE`
         )
-      )
-      .returning();
+      );
     
-    if (result.length > 0) {
-      console.log(`Reset ${result.length} orphaned jobs back to pending status`);
+    let resetCount = 0;
+    let failedCount = 0;
+    
+    // Process each orphaned job - retry or fail based on attempts
+    for (const job of orphanedJobs) {
+      if (job.attempts >= job.maxAttempts) {
+        // Max attempts reached, mark as failed
+        await this.db.update(jobQueue)
+          .set({
+            status: 'failed',
+            completedAt: new Date(),
+            error: 'Max retry attempts exceeded after worker failure',
+            workerId: null,
+          })
+          .where(eq(jobQueue.id, job.id));
+        failedCount++;
+      } else {
+        // Reset to pending with exponential backoff
+        await this.db.update(jobQueue)
+          .set({
+            status: 'pending',
+            workerId: null,
+            startedAt: null,
+            scheduledAt: new Date(Date.now() + Math.pow(2, job.attempts) * 5000), // 5s, 10s, 20s backoff
+          })
+          .where(eq(jobQueue.id, job.id));
+        resetCount++;
+      }
     }
     
-    return result.length;
+    if (resetCount > 0 || failedCount > 0) {
+      console.log(`Cleaned up ${orphanedJobs.length} orphaned jobs: ${resetCount} reset, ${failedCount} failed`);
+    }
+    
+    return orphanedJobs.length;
   }
 
   // Register a worker
@@ -255,11 +314,23 @@ export class DatabaseService {
       });
   }
 
-  // Update worker heartbeat
   async updateWorkerHeartbeat(workerId: string) {
-    await this.db.update(workers)
-      .set({ lastHeartbeat: new Date() })
-      .where(eq(workers.id, workerId));
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        await this.db.update(workers)
+          .set({ lastHeartbeat: new Date() })
+          .where(eq(workers.id, workerId));
+        return;
+      } catch (error: any) {
+        if (error.code === 'SQLITE_BUSY' && retries > 1) {
+          retries--;
+          await new Promise(resolve => setTimeout(resolve, 100 * (4 - retries)));
+        } else {
+          throw error;
+        }
+      }
+    }
   }
 
   // Mark worker as stopping/dead
@@ -283,31 +354,7 @@ export class DatabaseService {
       );
   }
 
-  async getNextJobs(limit: number) {
-    const jobs = await this.db.select()
-      .from(jobQueue)
-      .where(
-        and(
-          eq(jobQueue.status, 'pending'),
-          sql`${jobQueue.scheduledAt} <= unixepoch()`
-        )
-      )
-      .orderBy(desc(jobQueue.priority), jobQueue.scheduledAt)
-      .limit(limit);
-    
-    // Mark jobs as processing
-    for (const job of jobs) {
-      await this.db.update(jobQueue)
-        .set({
-          status: 'processing',
-          startedAt: new Date(),
-          attempts: job.attempts + 1,
-        })
-        .where(eq(jobQueue.id, job.id));
-    }
-    
-    return jobs;
-  }
+
 
   async getJob(jobId: string) {
     const [job] = await this.db.select()
