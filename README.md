@@ -83,28 +83,7 @@ curl -X POST http://localhost:1337/v1/batch/submit \
 ```
 
 ## Benchmarks & Performance
-
-### Processing Speed
-- **Small PDFs (1-5 pages)**: ~1-3 seconds
-- **Medium PDFs (10-20 pages)**: ~5-10 seconds  
-- **Large PDFs (50+ pages)**: ~20-40 seconds
-- **Batch (100 docs, 2 workers)**: ~15-30 minutes
-
-### Throughput
-- **Immediate `/v1/convert`**: 1-2 docs/second (synchronous)
-- **Batch `/v1/batch/submit`**: 10-20 docs/minute (2 workers)
-- **Worker scaling**: Linear up to CPU cores
-
-### File Size Limits
-- **Max file size**: 1GB
-- **Large file threshold**: >10MB (streaming to `/data/tmp`)
-- **Multipart upload**: >50MB (chunked S3 upload)
-
-### Cost Efficiency
-- **Mistral OCR**: $0.001/page ($1 per 1000 pages)
-- **Batch API**: 50% discount vs. individual calls
-- **Default margin**: 30% (configurable)
-- **Storage**: S3-compatible (Tigris/R2)
+TODO
 
 ### Recommended Configuration
 ```bash
