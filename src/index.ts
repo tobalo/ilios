@@ -24,9 +24,7 @@ const batchRoutes = createBatchRoutes(db, s3);
 app.use('*', cors());
 app.use('*', logger());
 app.use('*', errorHandler);
-
-app.use('/api/*', authMiddleware);
-app.use('/v1/*', authMiddleware);
+app.use('*', authMiddleware);
 
 app.route('/api/documents', documentRoutes);
 app.route('/api/usage', usageRoutes);

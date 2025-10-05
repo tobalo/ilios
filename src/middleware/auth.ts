@@ -1,9 +1,23 @@
 import { Context, Next } from 'hono';
 
+const PUBLIC_PATHS = ['/health', '/docs', '/openapi.json'];
+
+function parseApiKeys(apiKeyEnv: string | undefined): string[] {
+  if (!apiKeyEnv) return [];
+  return apiKeyEnv.split(',').map(key => key.trim()).filter(Boolean);
+}
+
 export async function authMiddleware(c: Context, next: Next) {
   const env = c.env as any;
+  const validApiKeys = parseApiKeys(env.API_KEY);
   
-  if (!env.API_KEY) {
+  if (validApiKeys.length === 0) {
+    await next();
+    return;
+  }
+
+  const path = c.req.path;
+  if (PUBLIC_PATHS.includes(path)) {
     await next();
     return;
   }
@@ -16,7 +30,7 @@ export async function authMiddleware(c: Context, next: Next) {
 
   const token = authHeader.substring(7);
   
-  if (token !== env.API_KEY) {
+  if (!validApiKeys.includes(token)) {
     return c.json({ error: 'Invalid API key' }, 401);
   }
 
