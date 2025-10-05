@@ -126,13 +126,29 @@ export class DatabaseService {
     metadata?: any;
     error?: string;
   }) {
-    await this.db.update(documents)
-      .set({
-        status,
-        ...(status === 'completed' && { processedAt: new Date() }),
-        ...data,
-      })
-      .where(eq(documents.id, id));
+    let attempts = 0;
+    const maxAttempts = 5;
+    
+    while (attempts < maxAttempts) {
+      try {
+        await this.db.update(documents)
+          .set({
+            status,
+            ...(status === 'completed' && { processedAt: new Date() }),
+            ...(data || {}),
+          })
+          .where(eq(documents.id, id));
+        return;
+      } catch (error: any) {
+        if (error.code === 'SQLITE_BUSY' && attempts < maxAttempts - 1) {
+          attempts++;
+          const delay = Math.pow(2, attempts) * 50;
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          throw error;
+        }
+      }
+    }
   }
 
   async getDocument(id: string) {
@@ -264,42 +280,68 @@ export class DatabaseService {
     
     const activeWorkerIds = activeWorkers.map(w => w.id);
     
-    // Find orphaned jobs (null worker_id or assigned to dead workers)
+    const timeoutThreshold = Math.floor(Date.now() / 1000) - 300;
+    
     const orphanedJobs = await this.db.select()
       .from(jobQueue)
       .where(
         and(
           eq(jobQueue.status, 'processing'),
-          activeWorkerIds.length > 0
-            ? sql`(${jobQueue.workerId} IS NULL OR ${jobQueue.workerId} NOT IN (${sql.join(activeWorkerIds.map(id => sql`${id}`), sql`, `)}))`
-            : sql`TRUE`
+          sql`(
+            ${jobQueue.workerId} IS NULL 
+            OR ${activeWorkerIds.length > 0 
+              ? sql`${jobQueue.workerId} NOT IN (${sql.join(activeWorkerIds.map(id => sql`${id}`), sql`, `)})`
+              : sql`TRUE`
+            }
+            OR unixepoch(${jobQueue.startedAt}) < ${timeoutThreshold}
+          )`
         )
       );
     
     let resetCount = 0;
     let failedCount = 0;
     
-    // Process each orphaned job - retry or fail based on attempts
     for (const job of orphanedJobs) {
+      const jobStartedAtUnix = job.startedAt ? Math.floor(new Date(job.startedAt).getTime() / 1000) : 0;
+      const isTimeout = jobStartedAtUnix > 0 && jobStartedAtUnix < timeoutThreshold;
+      const isDeadWorker = job.workerId && !activeWorkerIds.includes(job.workerId);
+      const reason = isTimeout ? 'Job timeout (>5 minutes)' : isDeadWorker ? 'Worker died' : 'Worker failure';
+      
+      console.log(`[Cleanup] Job ${job.id} orphaned: ${reason} (attempts: ${job.attempts}/${job.maxAttempts}, worker: ${job.workerId}, started: ${job.startedAt})`);
+      
       if (job.attempts >= job.maxAttempts) {
-        // Max attempts reached, mark as failed
         await this.db.update(jobQueue)
           .set({
             status: 'failed',
             completedAt: new Date(),
-            error: 'Max retry attempts exceeded after worker failure',
+            error: `Max retry attempts exceeded after ${reason}`,
             workerId: null,
           })
           .where(eq(jobQueue.id, job.id));
+        
+        if (job.documentId) {
+          try {
+            await this.updateDocumentStatus(job.documentId, 'failed', {
+              error: `Max retry attempts exceeded after ${reason}`,
+            });
+            
+            const doc = await this.getDocument(job.documentId);
+            if (doc?.batchId) {
+              await this.updateBatchProgress(doc.batchId);
+            }
+          } catch (error) {
+            console.error(`Failed to update document ${job.documentId} status:`, error);
+          }
+        }
+        
         failedCount++;
       } else {
-        // Reset to pending with exponential backoff
         await this.db.update(jobQueue)
           .set({
             status: 'pending',
             workerId: null,
             startedAt: null,
-            scheduledAt: new Date(Date.now() + Math.pow(2, job.attempts) * 5000), // 5s, 10s, 20s backoff
+            scheduledAt: new Date(Date.now() + Math.pow(2, job.attempts) * 5000),
           })
           .where(eq(jobQueue.id, job.id));
         resetCount++;
@@ -390,6 +432,56 @@ export class DatabaseService {
         result,
       })
       .where(eq(jobQueue.id, id));
+  }
+
+  async updateJobAndDocumentStatus(
+    jobId: string,
+    documentId: string,
+    jobStatus: 'completed' | 'failed',
+    documentStatus: 'completed' | 'failed',
+    data?: {
+      content?: string;
+      metadata?: any;
+      error?: string;
+      result?: any;
+    }
+  ) {
+    let attempts = 0;
+    const maxAttempts = 5;
+    
+    while (attempts < maxAttempts) {
+      try {
+        await this.db.transaction(async (tx) => {
+          await tx.update(jobQueue)
+            .set({
+              status: jobStatus,
+              completedAt: new Date(),
+              result: data?.result,
+              error: data?.error,
+            })
+            .where(eq(jobQueue.id, jobId));
+
+          await tx.update(documents)
+            .set({
+              status: documentStatus,
+              ...(documentStatus === 'completed' && { processedAt: new Date() }),
+              content: data?.content,
+              metadata: data?.metadata,
+              error: data?.error,
+            })
+            .where(eq(documents.id, documentId));
+        });
+        return;
+      } catch (error: any) {
+        if (error.code === 'SQLITE_BUSY' && attempts < maxAttempts - 1) {
+          attempts++;
+          const delay = Math.pow(2, attempts) * 50;
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          throw error;
+        }
+      }
+    }
   }
 
   async failJob(id: string, error: string) {

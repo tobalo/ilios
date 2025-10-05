@@ -43,10 +43,10 @@ export class JobProcessorSpawn {
       await this.distributeJobs();
     }, intervalMs);
     
-    // Periodic cleanup of orphaned jobs every 30 seconds
+    // Periodic cleanup of orphaned jobs every 60 seconds
     this.cleanupInterval = setInterval(async () => {
       await this.db.cleanupOrphanedJobs();
-    }, 30000);
+    }, 60000);
     
     await this.distributeJobs();
   }

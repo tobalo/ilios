@@ -96,8 +96,6 @@ class JobWorker {
         default:
           throw new Error(`Unknown job type: ${job.type}`);
       }
-
-      await this.db.completeJob(job.id);
       
       // Send completion via IPC
       if (process.send) {
@@ -135,8 +133,6 @@ class JobWorker {
         throw new Error(`Document ${job.documentId} has no S3 key - upload may have failed`);
       }
 
-      await this.db.updateDocumentStatus(document.id, 'processing');
-
       const startTime = Date.now();
       
       const fileMetadata = await this.s3.getFileMetadata(document.s3Key);
@@ -168,15 +164,21 @@ class JobWorker {
       
       const processingTime = Date.now() - startTime;
 
-      await this.db.updateDocumentStatus(document.id, 'completed', {
-        content: result.content,
-        metadata: {
-          ...result.metadata,
-          processingTimeMs: processingTime,
-          fileSize: fileMetadata.size,
-          largeFileProcessing: isLargeFile,
-        },
-      });
+      await this.db.updateJobAndDocumentStatus(
+        job.id,
+        document.id,
+        'completed',
+        'completed',
+        {
+          content: result.content,
+          metadata: {
+            ...result.metadata,
+            processingTimeMs: processingTime,
+            fileSize: fileMetadata.size,
+            largeFileProcessing: isLargeFile,
+          },
+        }
+      );
 
       const costData = this.mistral.calculateCost(result.usage);
       await this.db.trackUsage({
@@ -195,13 +197,22 @@ class JobWorker {
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      await this.db.updateDocumentStatus(job.documentId, 'failed', {
-        error: errorMessage,
-      });
+      
+      try {
+        await this.db.updateDocumentStatus(job.documentId, 'failed', {
+          error: errorMessage,
+        });
+      } catch (statusError) {
+        console.error(`Failed to update document ${job.documentId} to failed (non-fatal):`, statusError instanceof Error ? statusError.message : statusError);
+      }
       
       const document = await this.db.getDocument(job.documentId);
       if (document?.batchId) {
-        await this.db.updateBatchProgress(document.batchId);
+        try {
+          await this.db.updateBatchProgress(document.batchId);
+        } catch (batchError) {
+          console.error(`Failed to update batch progress for ${document.batchId} (non-fatal):`, batchError instanceof Error ? batchError.message : batchError);
+        }
       }
       
       await this.db.failJob(job.id, errorMessage);

@@ -375,7 +375,7 @@ export const openAPISpec = {
                   file: {
                     type: 'string',
                     format: 'binary',
-                    description: 'Document file to process (max 50MB)',
+                    description: 'Document file to process (max 1GB)',
                   },
                   metadata: {
                     type: 'string',

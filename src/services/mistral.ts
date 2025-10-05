@@ -91,8 +91,12 @@ export class MistralService {
       if (uploadedFileId) {
         try {
           await this.client.files.delete({ fileId: uploadedFileId });
-        } catch (error) {
-          console.error('Failed to cleanup file:', error);
+        } catch (error: any) {
+          if (error.statusCode === 404) {
+            console.log(`[Mistral] File ${uploadedFileId} already deleted (404)`);
+          } else {
+            console.error('Failed to cleanup file:', error);
+          }
         }
       }
     }

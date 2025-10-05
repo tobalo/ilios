@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
+import { serveStatic } from 'hono/bun';
 import { swaggerUI } from '@hono/swagger-ui';
 import { initializeServices, startJobProcessor } from './services';
 import { createDocumentRoutes } from './routes/v1/documents';
@@ -32,26 +33,8 @@ app.route('/api/usage', usageRoutes);
 app.route('/v1/convert', convertRoutes);
 app.route('/v1/batch', batchRoutes);
 
-app.get('/', (c) => {
-  return c.json({
-    name: 'Ilios API',
-    version: '2.1.0',
-    endpoints: {
-      convert: 'POST /v1/convert',
-      batchSubmit: 'POST /v1/batch/submit',
-      batchStatus: 'GET /v1/batch/status/:batchId',
-      batchDownload: 'GET /v1/batch/download/:batchId',
-      uploadUrl: 'POST /api/documents/upload-url',
-      uploadComplete: 'POST /api/documents/upload-complete/:id',
-      submit: 'POST /api/documents/submit',
-      status: 'GET /api/documents/status/:id',
-      download: 'GET /api/documents/:id',
-      original: 'GET /api/documents/:id/original',
-      usageSummary: 'GET /api/usage/summary',
-      usageBreakdown: 'GET /api/usage/breakdown',
-    },
-  });
-});
+app.get('/', serveStatic({ path: './public/index.html' }))
+app.use('/images/*', serveStatic({ root: './public' }))
 
 app.get('/openapi.json', (c) => {
   return c.json(openAPISpec);
