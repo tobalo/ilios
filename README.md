@@ -830,6 +830,3 @@ jobProcessor = new JobProcessorSpawn(db, 4); // 4 workers
 - Ensure sufficient disk space
 - Check temp directory permissions
 
-## License
-
-MIT
