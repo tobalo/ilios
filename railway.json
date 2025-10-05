@@ -1,0 +1,23 @@
+{
+  "name": "ilios",
+  "services": [
+    {
+      "name": "web",
+      "startCommand": "bun run start",
+      "mounts": [
+        {
+          "source": "ilios-embedded-data",
+          "destination": "/data"
+        }
+      ],
+      "envFile": ".env"
+    }
+  ],
+  "plugins": [],
+  "mounts": [
+    {
+      "source": "ilios-embedded-data",
+      "destination": "/data"
+    }
+  ]
+}

@@ -225,6 +225,45 @@
             font-size: 0.9rem;
             border-left: 4px solid var(--bronze);
             line-height: 1.5;
+            position: relative;
+        }
+        
+        .code-block {
+            position: relative;
+        }
+        
+        .copy-button {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background: var(--bronze);
+            color: var(--marble);
+            border: none;
+            padding: 0.4rem 0.6rem;
+            border-radius: 2px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            opacity: 0.8;
+            transition: all 0.3s ease;
+            font-family: var(--sans);
+        }
+        
+        .copy-button:hover {
+            opacity: 1;
+            transform: translateY(-1px);
+        }
+        
+        .copy-button.copied {
+            background: var(--olive);
+        }
+        
+        .copy-button::before {
+            content: '📋';
+            margin-right: 0.3rem;
+        }
+        
+        .copy-button.copied::before {
+            content: '✓';
         }
         
         code {
@@ -307,6 +346,33 @@
         .highlight {
             background: linear-gradient(180deg, transparent 60%, rgba(205, 127, 50, 0.2) 60%);
             font-weight: 600;
+        }
+        
+        .github-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            padding: 0.6rem 1.2rem;
+            background: var(--marble);
+            color: var(--stone);
+            text-decoration: none;
+            border-radius: 2px;
+            border: 2px solid var(--bronze);
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .github-link:hover {
+            background: var(--bronze);
+            color: var(--marble);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px var(--shadow);
+        }
+        
+        .github-icon {
+            width: 24px;
+            height: 24px;
         }
         
         table {
@@ -407,7 +473,13 @@
             pre {
                 font-size: 0.8rem;
                 padding: 1rem;
+                padding-top: 2.5rem;
                 overflow-x: auto;
+            }
+            
+            .copy-button {
+                font-size: 0.75rem;
+                padding: 0.3rem 0.5rem;
             }
             
             table {
@@ -455,6 +527,12 @@
             pre {
                 font-size: 0.75rem;
                 padding: 0.75rem;
+                padding-top: 2.5rem;
+            }
+            
+            .copy-button {
+                font-size: 0.7rem;
+                padding: 0.25rem 0.4rem;
             }
             
             code {
@@ -466,16 +544,22 @@
 <body>
     <div class="consultation-banner">
         <div class="banner-content">
-            <span class="banner-text">Need expert consultation for your document processing pipeline?</span>
-            <a href="https://eden.yeetum.com" class="banner-cta" target="_blank">Inquire at Eden</a>
+            <span class="banner-text">Need solutions consulting for your document processing pipeline?</span>
+            <a href="https://eden.yeetum.com" class="banner-cta" target="_blank" rel="noopener noreferrer">Inquire at Eden Advisory</a>
             <span class="banner-divider">or</span>
-            <a href="#installation" class="banner-link">Setup Your Own →</a>
+            <a href="https://github.com/tobalo/ilios" target="_blank" rel="noopener noreferrer" class="banner-link">Setup Your Own →</a>
         </div>
     </div>
     
     <header>
         <h1><span class="pillar"></span>ΙΛΙΟΣ<span class="pillar"></span></h1>
         <p class="subtitle">Cleanse Dark Data for the AI Age</p>
+        <a href="https://github.com/tobalo/ilios" target="_blank" rel="noopener noreferrer" class="github-link">
+            <svg class="github-icon" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+            </svg>
+            View on GitHub
+        </a>
     </header>
 
     <div class="container">
@@ -553,25 +637,20 @@
             <h2>Installation</h2>
             <p>Deploy your own Ilios instance in under 60 seconds:</p>
             
-            <pre><code>git clone https://github.com/tobalo/ilios.git
+            <div class="code-block">
+                <button class="copy-button" onclick="copyCode(this)">Copy</button>
+                <pre><code>git clone https://github.com/tobalo/ilios.git
 cd ilios
 bun install
 bun run db:push
 bun run dev</code></pre>
+            </div>
             
             <p style="margin-top: 1rem;">
                 Configure environment variables in <code>.env</code> based on <code>.env.example</code>. 
                 The API will be available at <code>http://localhost:1337</code>.
             </p>
         </section>
-
-        <section>
-            <h2>Performance Benchmarks</h2>
-            <p>Real-world performance metrics from production workloads. Last updated: <span id="benchmark-timestamp"></span></p>
-            
-            <div id="benchmark-tables"></div>
-        </section>
-
         <section>
             <h2>Why Ilios Matters</h2>
             <p>
@@ -670,21 +749,36 @@ bun run dev</code></pre>
             <h3>Quick Examples</h3>
             
             <h4>Convert a Single Document</h4>
-            <pre><code>curl -X POST http://localhost:1337/v1/convert \
+            <div class="code-block">
+                <button class="copy-button" onclick="copyCode(this)">Copy</button>
+                <pre><code>curl -X POST http://localhost:1337/v1/convert \
   -F "file=@contract.pdf" \
   -F "format=markdown" \
   -H "X-API-Key: your-api-key"</code></pre>
+            </div>
             
             <h4>Batch Processing</h4>
-            <pre><code>curl -X POST http://localhost:1337/v1/batch/submit \
+            <div class="code-block">
+                <button class="copy-button" onclick="copyCode(this)">Copy</button>
+                <pre><code>curl -X POST http://localhost:1337/v1/batch/submit \
   -F "files=@doc1.pdf" \
   -F "files=@doc2.pdf" \
   -F "priority=8" \
   -H "X-API-Key: your-api-key"</code></pre>
+            </div>
             
             <h4>Check Status</h4>
-            <pre><code>curl http://localhost:1337/v1/batch/status/batch_abc123 \
+            <div class="code-block">
+                <button class="copy-button" onclick="copyCode(this)">Copy</button>
+                <pre><code>curl http://localhost:1337/v1/batch/status/batch_abc123 \
   -H "X-API-Key: your-api-key"</code></pre>
+            </div>
+        </section>
+        <section>
+            <h2>Performance Benchmarks</h2>
+            <p>Real-world performance metrics from production workloads. Last updated: <span id="benchmark-timestamp"></span></p>
+            
+            <div id="benchmark-tables"></div>
         </section>
     </div>
 
@@ -699,6 +793,27 @@ bun run dev</code></pre>
     </footer>
 
     <script>
+        function copyCode(button) {
+            const codeBlock = button.nextElementSibling;
+            const code = codeBlock.querySelector('code').textContent;
+            
+            navigator.clipboard.writeText(code).then(() => {
+                button.textContent = 'Copied!';
+                button.classList.add('copied');
+                
+                setTimeout(() => {
+                    button.textContent = 'Copy';
+                    button.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                button.textContent = 'Failed';
+                setTimeout(() => {
+                    button.textContent = 'Copy';
+                }, 2000);
+            });
+        }
+        
         async function loadBenchmarks() {
             try {
                 const response = await fetch('/benchmarks/latest_results.json');
