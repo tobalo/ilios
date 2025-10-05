@@ -25,49 +25,47 @@ A production-ready document-to-markdown conversion API built with Bun, featuring
 
 ```mermaid
 graph TB
-    subgraph "Main Process - API Server"
+    subgraph CORE["Ilios API Server"]
         API[Hono API<br/>Routes & Middleware]
         JP[Job Processor<br/>Worker Manager]
-        S3[S3 Service<br/>Tigris/R2]
+        DB[(SQLite DB<br/>./data/ilios.db<br/>WAL Mode<br/><br/>Future: Turso Sync)]
+        
+        subgraph "Worker Processes (Spawned)"
+            W0{{Worker 0<br/>Atomic Claim<br/>Process<br/>Retry}}
+            W1{{Worker 1<br/>Atomic Claim<br/>Process<br/>Retry}}
+        end
         
         API -.-> JP
-        API -.-> S3
+        API -->|Read/Write| DB
+        JP -->|Manage| W0
+        JP -->|Manage| W1
+        JP -->|Cleanup Jobs| DB
+        
+        W0 -->|Claim Jobs<br/>Update Status| DB
+        W1 -->|Claim Jobs<br/>Update Status| DB
     end
     
-    subgraph "Worker Processes (Spawned)"
-        W0{{Worker 0<br/>Atomic Claim<br/>Process<br/>Retry}}
-        W1{{Worker 1<br/>Atomic Claim<br/>Process<br/>Retry}}
+    subgraph EXT["External Cloud Services"]
+        EXT_S3[("☁️ S3 Storage<br/>(Tigris)")]
+        EXT_MISTRAL[("🤖 Mistral OCR<br/>API")]
     end
     
-    DB[(SQLite DB<br/>./data/ilios.db<br/>WAL Mode<br/><br/>Future: Turso Sync)]
-    
-    EXT_S3[("☁️ S3 Storage<br/>(Tigris)")]
-    EXT_MISTRAL[("🤖 Mistral OCR<br/>API")]
-    
-    API -->|Read/Write| DB
-    JP -->|Manage| W0
-    JP -->|Manage| W1
-    JP -->|Cleanup Jobs| DB
-    
-    W0 -->|Claim Jobs<br/>Update Status| DB
-    W1 -->|Claim Jobs<br/>Update Status| DB
-    
+    API -->|Upload Files| EXT_S3
     W0 -->|Download/Upload| EXT_S3
     W1 -->|Download/Upload| EXT_S3
     
     W0 -->|OCR Request| EXT_MISTRAL
     W1 -->|OCR Request| EXT_MISTRAL
     
-    S3 -->|Upload Files| EXT_S3
-    
-    style DB fill:#e1f5ff,stroke:#0288d1,stroke-width:3px
-    style API fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-    style JP fill:#fff3e0,stroke:#f57c00,stroke-width:2px
-    style S3 fill:#fff3e0,stroke:#f57c00,stroke-width:2px
-    style W0 fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
-    style W1 fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
-    style EXT_S3 fill:#fce4ec,stroke:#c2185b,stroke-width:2px
-    style EXT_MISTRAL fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style CORE fill:#e3f2fd,stroke:#1976d2,stroke-width:3px,color:#000
+    style EXT fill:#fce4ec,stroke:#c2185b,stroke-width:3px,color:#000
+    style DB fill:#e1f5ff,stroke:#0288d1,stroke-width:3px,color:#000
+    style API fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#000
+    style JP fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#000
+    style W0 fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#000
+    style W1 fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#000
+    style EXT_S3 fill:#ffebee,stroke:#c2185b,stroke-width:2px,color:#000
+    style EXT_MISTRAL fill:#ffebee,stroke:#c2185b,stroke-width:2px,color:#000
 ```
 
 ### Request Flow (Detailed Sequence)
