@@ -2,6 +2,10 @@
 
 A production-ready document-to-markdown conversion API built with Bun, featuring immediate OCR, batch processing, and local-first architecture.
 
+### TODO
+- Enhanced `/data/tmp/` cleanup
+- ACL / rate limiting middleware
+
 ## Quick Setup
 
 ### Prerequisites

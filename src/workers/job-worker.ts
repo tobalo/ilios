@@ -3,7 +3,6 @@
 import { DatabaseService } from '../services/database';
 import { S3Service } from '../services/s3';
 import { MistralService } from '../services/mistral';
-import { Bun } from 'bun';
 
 interface WorkerMessage {
   type: 'process' | 'shutdown';
@@ -116,7 +115,12 @@ class JobWorker {
     try {
       const document = await this.db.getDocument(job.documentId);
       if (!document) {
-        throw new Error(`Document ${job.documentId} not found`);
+        throw new Error(`Document ${job.documentId} not found - job may reference invalid document ID`);
+      }
+
+      // Additional validation
+      if (!document.s3Key) {
+        throw new Error(`Document ${job.documentId} has no S3 key - upload may have failed`);
       }
 
       await this.db.updateDocumentStatus(document.id, 'processing');
@@ -129,7 +133,6 @@ class JobWorker {
       let fileData: ArrayBuffer;
       
       if (isLargeFile) {
-        const fs = await import('fs/promises');
         tempFilePath = `./data/tmp/${document.id}-${Date.now()}.tmp`;
         
         console.log(`[Worker] Streaming large file to temp: ${tempFilePath}, s3Key: ${document.s3Key}`);
@@ -138,7 +141,7 @@ class JobWorker {
         
         console.log(`[Worker] File downloaded to temp, reading into memory`);
         
-        fileData = await fs.readFile(tempFilePath);
+        fileData = await Bun.file(tempFilePath).arrayBuffer();
       } else {
         fileData = await this.s3.downloadAsBuffer(document.s3Key);
       }
@@ -194,8 +197,7 @@ class JobWorker {
     } finally {
       if (tempFilePath) {
         try {
-          const fs = await import('fs/promises');
-          await fs.unlink(tempFilePath);
+          await Bun.file(tempFilePath).delete();
         } catch {}
       }
     }
@@ -229,7 +231,24 @@ class JobWorker {
   async start() {
     console.log(`Worker ${this.workerId} started and ready to process jobs`);
     
-    await this.db.registerWorker(this.workerId, process.pid, require('os').hostname());
+    // Retry worker registration with exponential backoff for SQLITE_BUSY
+    let registered = false;
+    let attempts = 0;
+    while (!registered && attempts < 5) {
+      try {
+        await this.db.registerWorker(this.workerId, process.pid, require('os').hostname());
+        registered = true;
+      } catch (error: any) {
+        if (error.code === 'SQLITE_BUSY' && attempts < 4) {
+          attempts++;
+          const delay = Math.pow(2, attempts) * 100; // 200ms, 400ms, 800ms, 1600ms
+          console.log(`[Worker ${this.workerId}] Registration locked, retrying in ${delay}ms (attempt ${attempts}/5)`);
+          await Bun.sleep(delay);
+        } else {
+          throw error;
+        }
+      }
+    }
     
     this.heartbeatInterval = setInterval(async () => {
       try {

@@ -78,6 +78,10 @@ export class JobProcessorSpawn {
   private async spawnWorkers() {
     for (let i = 0; i < this.workerCount; i++) {
       await this.spawnWorker(`worker-${i}`);
+      // Small delay to reduce database contention during worker registration
+      if (i < this.workerCount - 1) {
+        await Bun.sleep(200);
+      }
     }
   }
 

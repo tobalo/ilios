@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { DatabaseService } from '../../services/database';
 import { MistralService } from '../../services/mistral';
-import * as fs from 'fs/promises';
+import { mkdir } from 'fs/promises';
 import * as path from 'path';
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024;
@@ -82,18 +82,17 @@ export function createConvertRoutes(db: DatabaseService, mistral: MistralService
 
       let fileData: ArrayBuffer;
 
-      if (file.size > LARGE_FILE_THRESHOLD) {
+      const VERY_LARGE_THRESHOLD = 100 * 1024 * 1024;
+
+      if (file.size > VERY_LARGE_THRESHOLD) {
         const tmpDir = path.join(process.cwd(), 'data', 'tmp');
-        await fs.mkdir(tmpDir, { recursive: true });
+        await mkdir(tmpDir, { recursive: true });
         
         tempFilePath = path.join(tmpDir, `${Date.now()}-${file.name}`);
         
-        console.log(`[Convert] Large file detected, streaming to: ${tempFilePath}`);
-        const buffer = await file.arrayBuffer();
-        await fs.writeFile(tempFilePath, new Uint8Array(buffer));
-        
-        const fileBuffer = await fs.readFile(tempFilePath);
-        fileData = fileBuffer.buffer;
+        console.log(`[Convert] Very large file (>100MB) detected, using temp: ${tempFilePath}`);
+        await Bun.write(tempFilePath, file);
+        fileData = await Bun.file(tempFilePath).arrayBuffer();
       } else {
         fileData = await file.arrayBuffer();
       }
@@ -171,7 +170,7 @@ export function createConvertRoutes(db: DatabaseService, mistral: MistralService
     } finally {
       if (tempFilePath) {
         try {
-          await fs.unlink(tempFilePath);
+          await Bun.file(tempFilePath).delete();
           console.log(`[Convert] Cleaned up temp file: ${tempFilePath}`);
         } catch (err) {
           console.error(`[Convert] Failed to cleanup temp file:`, err);

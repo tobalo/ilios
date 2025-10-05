@@ -111,6 +111,10 @@ Required environment variables:
 9. **Data Directory**: `./data/` is gitignored, contains:
    - `ilios.db` - Main SQLite database (shared by all processes)
    - `tmp/` - Temporary file storage for large file processing
+10. **Performance Optimizations**: Uses Bun native APIs for file I/O (see PERFORMANCE_OPTIMIZATIONS.md)
+    - `Bun.write()` for zero-copy file streaming
+    - `Bun.file()` for lazy file loading and operations
+    - Direct buffer processing for files <100MB (no temp files)
 
 ## Common Tasks
 

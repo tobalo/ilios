@@ -201,42 +201,60 @@ export class DatabaseService {
 
   // Atomically claim a job for a specific worker
   async claimNextJob(workerId: string) {
-    // Use a transaction to ensure atomicity
-    const job = await this.db.transaction(async (tx) => {
-      // Find next available job
-      const [availableJob] = await tx.select()
-        .from(jobQueue)
-        .where(
-          and(
-            eq(jobQueue.status, 'pending'),
-            sql`${jobQueue.scheduledAt} <= unixepoch()`
-          )
-        )
-        .orderBy(desc(jobQueue.priority), jobQueue.scheduledAt)
-        .limit(1);
-      
-      if (!availableJob) return null;
-      
-      // Try to claim it atomically
-      const [claimedJob] = await tx.update(jobQueue)
-        .set({
-          status: 'processing',
-          workerId: workerId,
-          startedAt: new Date(),
-          attempts: availableJob.attempts + 1,
-        })
-        .where(
-          and(
-            eq(jobQueue.id, availableJob.id),
-            eq(jobQueue.status, 'pending'), // Double-check it's still pending
-          )
-        )
-        .returning();
-      
-      return claimedJob;
-    });
+    // Retry on SQLITE_BUSY with exponential backoff
+    let attempts = 0;
+    const maxAttempts = 5;
     
-    return job;
+    while (attempts < maxAttempts) {
+      try {
+        // Use a transaction to ensure atomicity
+        const job = await this.db.transaction(async (tx) => {
+          // Find next available job
+          const [availableJob] = await tx.select()
+            .from(jobQueue)
+            .where(
+              and(
+                eq(jobQueue.status, 'pending'),
+                sql`${jobQueue.scheduledAt} <= unixepoch()`
+              )
+            )
+            .orderBy(desc(jobQueue.priority), jobQueue.scheduledAt)
+            .limit(1);
+          
+          if (!availableJob) return null;
+          
+          // Try to claim it atomically
+          const [claimedJob] = await tx.update(jobQueue)
+            .set({
+              status: 'processing',
+              workerId: workerId,
+              startedAt: new Date(),
+              attempts: availableJob.attempts + 1,
+            })
+            .where(
+              and(
+                eq(jobQueue.id, availableJob.id),
+                eq(jobQueue.status, 'pending'), // Double-check it's still pending
+              )
+            )
+            .returning();
+          
+          return claimedJob;
+        });
+        
+        return job;
+      } catch (error: any) {
+        if (error.code === 'SQLITE_BUSY' && attempts < maxAttempts - 1) {
+          attempts++;
+          const delay = Math.pow(2, attempts) * 50; // 100ms, 200ms, 400ms, 800ms
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          throw error;
+        }
+      }
+    }
+    
+    return null;
   }
 
   async cleanupOrphanedJobs() {

@@ -109,42 +109,45 @@ export function createBatchRoutes(db: DatabaseService, s3: S3Service) {
           status: 'pending',
         });
 
-        (async () => {
-          try {
-            const uploadStrategy = file.size > MULTIPART_THRESHOLD ? 'multipart' :
-                                 file.size > LARGE_FILE_THRESHOLD ? 'streaming' : 'standard';
+        // Immediately capture loop variables to avoid closure issues
+        ((capturedDocId, capturedS3Key, capturedFile, capturedMimeType) => {
+          (async () => {
+            try {
+              const uploadStrategy = capturedFile.size > MULTIPART_THRESHOLD ? 'multipart' :
+                                   capturedFile.size > LARGE_FILE_THRESHOLD ? 'streaming' : 'standard';
 
-            console.log(`[Batch] Uploading ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB) - ${uploadStrategy}`);
+              console.log(`[Batch] Uploading ${capturedFile.name} (${(capturedFile.size / 1024 / 1024).toFixed(2)}MB) - ${uploadStrategy}`);
 
-            if (uploadStrategy === 'multipart' || uploadStrategy === 'streaming') {
-              await s3.uploadLarge(s3Key, file, { type: mimeType, fileSize: file.size });
-            } else {
-              await s3.upload(s3Key, file, { type: mimeType });
+              if (uploadStrategy === 'multipart' || uploadStrategy === 'streaming') {
+                await s3.uploadLarge(capturedS3Key, capturedFile, { type: capturedMimeType, fileSize: capturedFile.size });
+              } else {
+                await s3.upload(capturedS3Key, capturedFile, { type: capturedMimeType });
+              }
+
+              const exists = await s3.exists(capturedS3Key);
+              if (!exists) {
+                throw new Error('Upload verification failed');
+              }
+
+              await db.createJob({
+                documentId: capturedDocId,
+                type: 'convert',
+                priority: params.priority,
+              });
+
+              console.log(`[Batch] Successfully queued ${capturedFile.name} for processing`);
+
+            } catch (error: any) {
+              console.error(`[Batch] Failed to upload ${capturedFile.name}:`, error);
+              await db.updateDocumentStatus(capturedDocId, 'failed', {
+                error: `Upload failed: ${error.message}`
+              });
+              await db.updateBatchProgress(batchId);
             }
-
-            const exists = await s3.exists(s3Key);
-            if (!exists) {
-              throw new Error('Upload verification failed');
-            }
-
-            await db.createJob({
-              documentId,
-              type: 'convert',
-              priority: params.priority,
-            });
-
-            console.log(`[Batch] Successfully queued ${file.name} for processing`);
-
-          } catch (error: any) {
-            console.error(`[Batch] Failed to upload ${file.name}:`, error);
-            await db.updateDocumentStatus(documentId, 'failed', {
-              error: `Upload failed: ${error.message}`
-            });
-            await db.updateBatchProgress(batchId);
-          }
-        })().catch(err => {
-          console.error(`[Batch] Uncaught error processing ${file.name}:`, err);
-        });
+          })().catch(err => {
+            console.error(`[Batch] Uncaught error processing ${capturedFile.name}:`, err);
+          });
+        })(documentId, s3Key, file, mimeType);
       }
 
       return c.json({
