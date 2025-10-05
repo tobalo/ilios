@@ -9,8 +9,7 @@ function parseApiKeys(apiKeyEnv: string | undefined): string[] {
 }
 
 export async function authMiddleware(c: Context, next: Next) {
-  const env = c.env as any;
-  const validApiKeys = parseApiKeys(env.API_KEY);
+  const validApiKeys = parseApiKeys(process.env.API_KEY);
   
   if (validApiKeys.length === 0) {
     await next();
