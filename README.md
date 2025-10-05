@@ -87,7 +87,7 @@ curl -X POST http://localhost:1337/v1/batch/submit \
 ```
 
 ## Benchmarks & Performance
-TODO
+Latest benchmarkets can be found in `/benchmarks/latest_results.json`
 
 ### Recommended Configuration
 ```bash
