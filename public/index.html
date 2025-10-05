@@ -585,10 +585,11 @@
                 <li style="padding: 0.5rem 0;">🔄 <strong>Dual Processing Modes</strong> - Immediate or async batch conversion</li>
                 <li style="padding: 0.5rem 0;">🧹 <strong>Dark Data Liberation</strong> - Extract text from PDFs, images, scans</li>
                 <li style="padding: 0.5rem 0;">🎯 <strong>AI Pipeline Ready</strong> - Markdown optimized for embeddings & RAG</li>
-                <li style="padding: 0.5rem 0;">📊 <strong>Usage Tracking</strong> - Built-in token and cost monitoring</li>
+                <li style="padding: 0.5rem 0;">📊 <strong>Usage Tracking</strong> - Per-key billing and cost monitoring</li>
+                <li style="padding: 0.5rem 0;">🔑 <strong>Multi-Tenant ACL</strong> - API key auth with isolated usage tracking</li>
                 <li style="padding: 0.5rem 0;">🗄️ <strong>Local-First Database</strong> - SQLite with optional Turso sync</li>
                 <li style="padding: 0.5rem 0;">☁️ <strong>S3 Compatible</strong> - Works with any S3-compatible storage</li>
-                <li style="padding: 0.5rem 0;">🔒 <strong>Production Ready</strong> - API auth, retries, configurable retention</li>
+                <li style="padding: 0.5rem 0;">🔒 <strong>Production Ready</strong> - Bearer auth, retries, configurable retention</li>
                 <li style="padding: 0.5rem 0;">📦 <strong>Self-Hosted</strong> - Full data control and infrastructure ownership</li>
                 <li style="padding: 0.5rem 0;">📖 <strong>OpenAPI Docs</strong> - Complete API reference at <code>/docs</code></li>
             </ul>
@@ -682,6 +683,35 @@ bun run dev</code></pre>
         </section>
 
         <section>
+            <h2>Authentication</h2>
+            <p>
+                API key authentication is <strong>optional</strong> but <strong>strongly recommended for production</strong>. 
+                When enabled via the <code>API_KEY</code> environment variable, all endpoints require authentication except 
+                public paths (<code>/health</code>, <code>/docs</code>, <code>/openapi.json</code>).
+            </p>
+            
+            <h3>Using API Keys</h3>
+            <p>Include your API key in the <code>Authorization</code> header with Bearer scheme:</p>
+            <div class="code-block">
+                <button class="copy-button" onclick="copyCode(this)">Copy</button>
+                <pre><code>Authorization: Bearer YOUR_API_KEY</code></pre>
+            </div>
+            
+            <h3>Multi-Tenant ACL Support</h3>
+            <p>
+                Set multiple API keys (comma-separated) to support different teams or clients with isolated usage tracking:
+            </p>
+            <div class="code-block">
+                <button class="copy-button" onclick="copyCode(this)">Copy</button>
+                <pre><code>API_KEY=team-alpha-key,team-beta-key,admin-master-key</code></pre>
+            </div>
+            <p style="margin-top: 1rem;">
+                Each key's operations are tracked independently in the database for billing and auditing. 
+                Usage endpoints automatically filter results to the authenticated key.
+            </p>
+        </section>
+
+        <section>
             <h2>API Usage</h2>
             <p>Ilios provides both immediate and asynchronous processing:</p>
             
@@ -751,27 +781,27 @@ bun run dev</code></pre>
             <h4>Convert a Single Document</h4>
             <div class="code-block">
                 <button class="copy-button" onclick="copyCode(this)">Copy</button>
-                <pre><code>curl -X POST http://localhost:1337/v1/convert \
+                <pre><code>curl -X POST https://ilios.sh/v1/convert \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -F "file=@contract.pdf" \
-  -F "format=markdown" \
-  -H "X-API-Key: your-api-key"</code></pre>
+  -F "format=markdown"</code></pre>
             </div>
             
             <h4>Batch Processing</h4>
             <div class="code-block">
                 <button class="copy-button" onclick="copyCode(this)">Copy</button>
-                <pre><code>curl -X POST http://localhost:1337/v1/batch/submit \
+                <pre><code>curl -X POST https://ilios.sh/v1/batch/submit \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -F "files=@doc1.pdf" \
   -F "files=@doc2.pdf" \
-  -F "priority=8" \
-  -H "X-API-Key: your-api-key"</code></pre>
+  -F "priority=8"</code></pre>
             </div>
             
             <h4>Check Status</h4>
             <div class="code-block">
                 <button class="copy-button" onclick="copyCode(this)">Copy</button>
-                <pre><code>curl http://localhost:1337/v1/batch/status/batch_abc123 \
-  -H "X-API-Key: your-api-key"</code></pre>
+                <pre><code>curl https://ilios.sh/v1/batch/status/batch_abc123 \
+  -H "Authorization: Bearer YOUR_API_KEY"</code></pre>
             </div>
         </section>
         <section>

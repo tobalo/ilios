@@ -1,9 +1,35 @@
 export const openAPISpec = {
-  openapi: '3.0.0',
+  openapi: '0.0.3',
   info: {
     title: 'Ilios API',
-    version: '2.1.1',
-    description: 'High-performance document-to-markdown conversion API with immediate OCR and batch processing using Mistral AI. Built with Bun native APIs for 2-10x faster file operations.',
+    version: '0.0.3',
+    description: `High-performance document-to-markdown conversion API with immediate OCR and batch processing using Mistral AI. Built with Bun native APIs for 2-10x faster file operations.
+
+## Authentication
+
+API key authentication is optional but recommended for production deployments. When the \`API_KEY\` environment variable is set, all endpoints except public paths require authentication.
+
+**Public Paths (No Auth Required):**
+- \`/health\` - Health check
+- \`/docs\` - API documentation
+- \`/openapi.json\` - OpenAPI specification
+- \`/\` - Landing page
+- \`/images/*\` - Static assets
+- \`/benchmarks/*\` - Benchmark results
+
+**Authentication Header:**
+\`\`\`
+Authorization: Bearer YOUR_API_KEY
+\`\`\`
+
+**Multi-Key ACL Support:**
+Set multiple API keys for different teams/clients:
+\`\`\`
+API_KEY=team-alpha-key,team-beta-key,admin-key
+\`\`\`
+
+**Usage Tracking:**
+All API operations are automatically tracked per API key for billing and auditing. Usage endpoints automatically filter results to the authenticated key.`,
   },
   servers: [
     {
@@ -17,11 +43,11 @@ export const openAPISpec = {
   ],
   components: {
     securitySchemes: {
-      apiKey: {
-        type: 'apiKey',
-        in: 'header',
-        name: 'X-API-Key',
-        description: 'API key for authentication',
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'API_KEY',
+        description: 'API key authentication using Bearer token. Set API_KEY environment variable to enable. Supports multiple comma-separated keys for ACL.',
       },
     },
     schemas: {
@@ -206,7 +232,7 @@ export const openAPISpec = {
       },
     },
   },
-  security: [{ apiKey: [] }],
+  security: [{ bearerAuth: [] }],
   paths: {
     '/': {
       get: {
@@ -377,9 +403,11 @@ export const openAPISpec = {
                     format: 'binary',
                     description: 'Document file to process (max 1GB)',
                   },
-                  metadata: {
-                    type: 'string',
-                    description: 'Optional JSON metadata',
+                  retentionDays: {
+                    type: 'integer',
+                    minimum: 1,
+                    maximum: 3650,
+                    description: 'Days to retain document (optional)',
                   },
                 },
               },
@@ -387,7 +415,7 @@ export const openAPISpec = {
           },
         },
         responses: {
-          '202': {
+          '200': {
             description: 'Document accepted for processing',
             content: {
               'application/json': {
@@ -536,7 +564,7 @@ export const openAPISpec = {
     '/api/usage/summary': {
       get: {
         summary: 'Usage Summary',
-        description: 'Get usage statistics and cost summary',
+        description: 'Get usage statistics and cost summary. When authenticated, results are automatically filtered to the API key used in the request.',
         parameters: [
           {
             name: 'startDate',
@@ -566,7 +594,7 @@ export const openAPISpec = {
     '/api/usage/breakdown': {
       get: {
         summary: 'Usage Breakdown',
-        description: 'Get detailed usage breakdown by operation type',
+        description: 'Get detailed usage breakdown by operation type. When authenticated, results are automatically filtered to the API key used in the request.',
         responses: {
           '200': {
             description: 'Usage breakdown',

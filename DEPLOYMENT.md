@@ -34,7 +34,9 @@ Optional:
 - `USE_EMBEDDED_REPLICA` - Enable Turso sync (default: `false`)
 - `TURSO_DATABASE_URL` - Turso database URL (if embedded replica enabled)
 - `TURSO_AUTH_TOKEN` - Turso auth token (if embedded replica enabled)
-- `API_KEY` - Optional API authentication key
+
+**Security (Recommended for Production):**
+- `API_KEY` - API authentication key(s). When set, all endpoints require `Authorization: Bearer <key>` except `/health`, `/docs`, `/openapi.json`. Supports multiple comma-separated keys for ACL: `API_KEY=key1,key2,key3`
 
 ## Railway Deployment
 
@@ -60,6 +62,7 @@ Railway deployment is pre-configured with:
    railway variables set AWS_SECRET_ACCESS_KEY=your-secret
    railway variables set S3_BUCKET=your-bucket
    railway variables set MISTRAL_API_KEY=your-key
+   railway variables set API_KEY=your-secure-api-key  # IMPORTANT: Set for production security
    ```
 
 4. **Deploy**
