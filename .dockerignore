@@ -1,0 +1,48 @@
+# Dependencies
+node_modules
+bun.lockb
+
+# Build output
+dist
+*.js.map
+
+# Data directory (will be mounted as volume)
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Keep migrations
+!src/db/migrations/
+
+# Development
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# CI/CD
+.github
+
+# Logs
+logs
+*.log
+npm-debug.log*

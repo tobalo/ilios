@@ -33,14 +33,6 @@ export class DatabaseService {
       
       this.db = drizzle(this.client);
       
-      this.initializeDatabase().catch(err => {
-        console.error('Failed to initialize database:', err);
-      });
-      
-      this.syncDatabase().catch(err => {
-        console.error('Initial sync failed:', err);
-      });
-      
       if (options?.syncIntervalSeconds) {
         this.syncInterval = setInterval(() => {
           this.syncDatabase().catch(err => {
@@ -57,11 +49,11 @@ export class DatabaseService {
       });
       
       this.db = drizzle(this.client);
-      
-      this.initializeDatabase().catch(err => {
-        console.error('Failed to initialize database:', err);
-      });
     }
+  }
+  
+  async initialize() {
+    await this.initializeDatabase();
   }
   
   private async initializeDatabase() {
@@ -74,8 +66,68 @@ export class DatabaseService {
       // Verify settings
       const timeout = await this.db.get(sql`PRAGMA busy_timeout`);
       console.log(`Database initialized: WAL mode, busy_timeout=${(timeout as any).timeout}ms`);
+      
+      // Auto-migrate if tables don't exist
+      await this.autoMigrate();
     } catch (error) {
       console.warn('Failed to set database PRAGMAs:', error);
+    }
+  }
+  
+  private async autoMigrate() {
+    try {
+      const result = await this.client.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='documents'"
+      );
+      
+      if (result.rows.length === 0) {
+        console.log('[Migration] Database is empty, running migrations...');
+        
+        const fs = await import('fs/promises');
+        const path = await import('path');
+        
+        const migrationsDir = path.join(process.cwd(), 'src/db/migrations');
+        const files = await fs.readdir(migrationsDir);
+        const sqlFiles = files
+          .filter(f => f.endsWith('.sql'))
+          .sort()
+          .reverse();
+        
+        const latestMigration = sqlFiles[0];
+        
+        if (latestMigration) {
+          console.log(`[Migration] Running latest schema: ${latestMigration}`);
+          const filePath = path.join(migrationsDir, latestMigration);
+          const migration = await fs.readFile(filePath, 'utf-8');
+          
+          const statements = migration
+            .split(/-->.*?breakpoint/g)
+            .join('')
+            .split(';')
+            .map(s => s.trim())
+            .filter(s => s.length > 0 && !s.startsWith('--'));
+          
+          for (const statement of statements) {
+            try {
+              await this.client.execute(statement);
+            } catch (error: any) {
+              if (error.message?.includes('already exists')) {
+                console.log(`[Migration] Skipping (already exists): ${statement.substring(0, 50)}...`);
+              } else {
+                console.error(`[Migration] Failed: ${statement.substring(0, 100)}...`);
+                throw error;
+              }
+            }
+          }
+          
+          console.log('[Migration] Schema initialized successfully');
+        }
+      } else {
+        console.log('[Migration] Database already initialized, skipping migrations');
+      }
+    } catch (error) {
+      console.error('[Migration] Failed to auto-migrate:', error);
+      throw error;
     }
   }
   

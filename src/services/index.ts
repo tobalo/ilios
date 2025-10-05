@@ -10,7 +10,7 @@ export interface Services {
   jobProcessor: JobProcessorSpawn | null;
 }
 
-export function initializeServices(env: any): Services {
+export async function initializeServices(env: any): Promise<Services> {
   const useEmbeddedReplica = env.USE_EMBEDDED_REPLICA !== 'false';
   
   const db = new DatabaseService(
@@ -23,6 +23,8 @@ export function initializeServices(env: any): Services {
       useEmbeddedReplica,
     }
   );
+  
+  await db.initialize();
 
   const s3 = new S3Service({
     accessKeyId: env.AWS_ACCESS_KEY_ID,

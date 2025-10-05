@@ -14,7 +14,7 @@ import { openAPISpec } from './openapi';
 
 const app = new Hono();
 const env = process.env as any;
-const { db, s3, mistral } = initializeServices(env);
+const { db, s3, mistral } = await initializeServices(env);
 
 const documentRoutes = createDocumentRoutes(db, s3);
 const usageRoutes = createUsageRoutes(db);
