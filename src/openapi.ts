@@ -2,7 +2,7 @@ export const openAPISpec = {
   openapi: '0.0.3',
   info: {
     title: 'Ilios API',
-    version: '0.0.3',
+    version: '2.1.1',
     description: `High-performance document-to-markdown conversion API with immediate OCR and batch processing using Mistral AI. Built with Bun native APIs for 2-10x faster file operations.
 
 ## Authentication
