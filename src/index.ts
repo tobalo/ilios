@@ -35,6 +35,7 @@ app.route('/v1/batch', batchRoutes);
 
 app.get('/', serveStatic({ path: './public/index.html' }))
 app.use('/images/*', serveStatic({ root: './public' }))
+app.use('/benchmarks/*', serveStatic({ root: './public' }))
 
 app.get('/openapi.json', (c) => {
   return c.json(openAPISpec);

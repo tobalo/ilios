@@ -215,37 +215,6 @@
             opacity: 0.8;
         }
         
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1.5rem;
-            margin: 2rem 0;
-        }
-        
-        .stat-card {
-            background: var(--marble);
-            padding: 1.5rem;
-            border-radius: 2px;
-            text-align: center;
-            border-left: 3px solid var(--olive);
-        }
-        
-        .stat-value {
-            font-family: var(--serif);
-            font-size: 2rem;
-            font-weight: 600;
-            color: var(--olive);
-            display: block;
-            margin-bottom: 0.5rem;
-        }
-        
-        .stat-label {
-            font-size: 0.9rem;
-            opacity: 0.8;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-        
         pre {
             background: var(--stone);
             color: var(--marble);
@@ -417,19 +386,6 @@
                 font-size: 1.2rem;
             }
             
-            .stats-grid {
-                grid-template-columns: repeat(2, 1fr);
-                gap: 1rem;
-            }
-            
-            .stat-value {
-                font-size: 1.5rem;
-            }
-            
-            .stat-label {
-                font-size: 0.8rem;
-            }
-            
             .tech-stack {
                 grid-template-columns: repeat(3, 1fr);
                 gap: 1.5rem;
@@ -479,10 +435,6 @@
             .pillar {
                 height: 15px;
                 width: 3px;
-            }
-            
-            .stats-grid {
-                grid-template-columns: 1fr;
             }
             
             .tech-stack {
@@ -542,25 +494,6 @@
                 Ilios solves this critical infrastructure gap by providing <strong>production-grade OCR</strong> powered by 
                 <strong>Mistral AI</strong>, running on the <strong>Bun runtime</strong> with native APIs for 2-10x faster file operations.
             </p>
-            
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <span class="stat-value">100%</span>
-                    <span class="stat-label">Success Rate</span>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-value">37-96s</span>
-                    <span class="stat-label">Avg Processing Time</span>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-value">1GB</span>
-                    <span class="stat-label">Max File Size</span>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-value">1.01 MB/s</span>
-                    <span class="stat-label">Throughput</span>
-                </div>
-            </div>
             
             <h3>Features</h3>
             <ul style="list-style: none; padding-left: 0;">
@@ -634,40 +567,9 @@ bun run dev</code></pre>
 
         <section>
             <h2>Performance Benchmarks</h2>
-            <p>Real-world performance metrics from production workloads:</p>
+            <p>Real-world performance metrics from production workloads. Last updated: <span id="benchmark-timestamp"></span></p>
             
-            <h3>Endpoint Performance Summary</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Endpoint</th>
-                        <th>Success Rate</th>
-                        <th>Avg Latency</th>
-                        <th>Min/Max</th>
-                        <th>Throughput</th>
-                        <th>Req/sec</th>
-                    </tr>
-                </thead>
-                <tbody id="benchmark-summary">
-                </tbody>
-            </table>
-            
-            <h3>Document Processing Details</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Endpoint</th>
-                        <th>Document</th>
-                        <th>Size (MB)</th>
-                        <th>Pages</th>
-                        <th>Latency</th>
-                        <th>Tokens</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody id="benchmark-details">
-                </tbody>
-            </table>
+            <div id="benchmark-tables"></div>
         </section>
 
         <section>
@@ -797,59 +699,153 @@ bun run dev</code></pre>
     </footer>
 
     <script>
-        const benchmarkData = {"timestamp":1759684269.888594,"base_url":"http://localhost:1337","results":[{"endpoint":"/v1/convert","operation":"by_size_analysis","total_requests":4,"successful_requests":4,"failed_requests":0,"total_time_seconds":225.15346212498844,"requests_per_second":0.017765660639850602,"avg_latency_ms":56277.323291760695,"min_latency_ms":37073.162000015145,"max_latency_ms":96199.58333400427,"p50_latency_ms":45918.27391651168,"p95_latency_ms":131495.62070924728,"p99_latency_ms":140907.89734264545,"throughput_mb_per_second":1.0075334127083102,"error_count":0,"size_breakdown":{"large":{"count":3,"avg_latency_ms":42969.9032776795,"min_latency_ms":37073.162000015145,"max_latency_ms":49138.200167013565,"avg_latency_seconds":42.9699032776795,"avg_pages":123.66666666666667,"total_pages":371},"xlarge":{"count":1,"avg_latency_ms":96199.58333400427,"min_latency_ms":96199.58333400427,"max_latency_ms":96199.58333400427,"avg_latency_seconds":96.19958333400427,"avg_pages":50,"total_pages":50}},"documents":[{"file_name":"glpolicy-34MB-108pages.pdf","file_size_mb":34.35793113708496,"size_category":"large","latency_ms":37073.162000015145,"success":true,"pages":108,"processing_time_ms":37048,"tokens_used":62446},{"file_name":"wdpolicy-42MB-25pages.pdf","file_size_mb":42.11568832397461,"size_category":"large","latency_ms":42698.347666009795,"success":true,"pages":25,"processing_time_ms":42689,"tokens_used":11413},{"file_name":"glpolicy-48MB-238pages.pdf","file_size_mb":48.85719108581543,"size_category":"large","latency_ms":49138.200167013565,"success":true,"pages":238,"processing_time_ms":49120,"tokens_used":143237},{"file_name":"eopolicy-101MB-50pages.pdf","file_size_mb":101.51882553100586,"size_category":"xlarge","latency_ms":96199.58333400427,"success":true,"pages":50,"processing_time_ms":96181,"tokens_used":29944}]},{"endpoint":"/api/documents/submit","operation":"submit_with_polling","total_requests":4,"successful_requests":0,"failed_requests":4,"total_time_seconds":436.12701158298296,"requests_per_second":0.009171640127222228,"avg_latency_ms":109029.12039600051,"min_latency_ms":70328.39937499375,"max_latency_ms":182932.86920900573,"p50_latency_ms":91427.60650000127,"p95_latency_ms":246286.73964725024,"p99_latency_ms":263181.10509744874,"throughput_mb_per_second":0.5201458062744129,"error_count":4,"documents":[{"file_name":"glpolicy-34MB-108pages.pdf","file_size_mb":34.35793113708496,"size_category":"large","latency_ms":70328.39937499375,"success":false,"pages":null,"processing_time_ms":null,"tokens_used":null},{"file_name":"wdpolicy-42MB-25pages.pdf","file_size_mb":42.11568832397461,"size_category":"large","latency_ms":84394.17104198947,"success":false,"pages":null,"processing_time_ms":null,"tokens_used":null},{"file_name":"glpolicy-48MB-238pages.pdf","file_size_mb":48.85719108581543,"size_category":"large","latency_ms":98461.04195801308,"success":false,"pages":null,"processing_time_ms":null,"tokens_used":null},{"file_name":"eopolicy-101MB-50pages.pdf","file_size_mb":101.51882553100586,"size_category":"xlarge","latency_ms":182932.86920900573,"success":false,"pages":null,"processing_time_ms":null,"tokens_used":null}]}]};
-        
-        document.addEventListener('DOMContentLoaded', () => {
-            const successfulResult = benchmarkData.results.find(r => r.successful_requests > 0);
-            if (successfulResult) {
-                document.querySelectorAll('.stat-value')[0].textContent = 
-                    ((successfulResult.successful_requests / successfulResult.total_requests) * 100).toFixed(0) + '%';
-                document.querySelectorAll('.stat-value')[1].textContent = 
-                    (successfulResult.min_latency_ms / 1000).toFixed(0) + '-' + 
-                    (successfulResult.max_latency_ms / 1000).toFixed(0) + 's';
-                document.querySelectorAll('.stat-value')[3].textContent = 
-                    successfulResult.throughput_mb_per_second.toFixed(2) + ' MB/s';
+        async function loadBenchmarks() {
+            try {
+                const response = await fetch('/benchmarks/latest_results.json');
+                const data = await response.json();
+                
+                const timestampEl = document.getElementById('benchmark-timestamp');
+                const date = new Date(data.timestamp * 1000);
+                timestampEl.textContent = date.toLocaleString();
+                
+                const container = document.getElementById('benchmark-tables');
+                
+                data.results.forEach(result => {
+                    const section = document.createElement('div');
+                    section.style.marginBottom = '3rem';
+                    
+                    const title = document.createElement('h3');
+                    title.textContent = `${result.endpoint} - ${result.operation}`;
+                    section.appendChild(title);
+                    
+                    const summaryTable = document.createElement('table');
+                    summaryTable.innerHTML = `
+                        <thead>
+                            <tr>
+                                <th>Metric</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Total Requests</td>
+                                <td>${result.total_requests}</td>
+                            </tr>
+                            <tr>
+                                <td>Success Rate</td>
+                                <td class="${result.successful_requests === result.total_requests ? 'metric-good' : 'metric-bad'}">
+                                    ${((result.successful_requests / result.total_requests) * 100).toFixed(1)}% 
+                                    (${result.successful_requests}/${result.total_requests})
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Total Time</td>
+                                <td>${result.total_time_seconds.toFixed(2)}s</td>
+                            </tr>
+                            <tr>
+                                <td>Requests/Second</td>
+                                <td>${result.requests_per_second.toFixed(4)}</td>
+                            </tr>
+                            <tr>
+                                <td>Avg Latency</td>
+                                <td>${(result.avg_latency_ms / 1000).toFixed(2)}s</td>
+                            </tr>
+                            <tr>
+                                <td>Min/Max Latency</td>
+                                <td>${(result.min_latency_ms / 1000).toFixed(2)}s / ${(result.max_latency_ms / 1000).toFixed(2)}s</td>
+                            </tr>
+                            <tr>
+                                <td>P50 Latency</td>
+                                <td>${(result.p50_latency_ms / 1000).toFixed(2)}s</td>
+                            </tr>
+                            <tr>
+                                <td>P95 Latency</td>
+                                <td>${(result.p95_latency_ms / 1000).toFixed(2)}s</td>
+                            </tr>
+                            <tr>
+                                <td>P99 Latency</td>
+                                <td>${(result.p99_latency_ms / 1000).toFixed(2)}s</td>
+                            </tr>
+                            <tr>
+                                <td>Throughput</td>
+                                <td>${result.throughput_mb_per_second.toFixed(2)} MB/s</td>
+                            </tr>
+                            <tr>
+                                <td>Error Count</td>
+                                <td class="${result.error_count === 0 ? 'metric-good' : 'metric-bad'}">${result.error_count}</td>
+                            </tr>
+                        </tbody>
+                    `;
+                    section.appendChild(summaryTable);
+                    
+                    if (result.size_breakdown) {
+                        const breakdownTitle = document.createElement('h4');
+                        breakdownTitle.textContent = 'Size Breakdown';
+                        breakdownTitle.style.marginTop = '1.5rem';
+                        section.appendChild(breakdownTitle);
+                        
+                        const breakdownTable = document.createElement('table');
+                        let breakdownRows = '<thead><tr><th>Size Category</th><th>Count</th><th>Avg Latency</th><th>Min/Max</th><th>Avg Pages</th><th>Total Pages</th></tr></thead><tbody>';
+                        
+                        for (const [category, stats] of Object.entries(result.size_breakdown)) {
+                            breakdownRows += `
+                                <tr>
+                                    <td><strong>${category.toUpperCase()}</strong></td>
+                                    <td>${stats.count}</td>
+                                    <td>${(stats.avg_latency_ms / 1000).toFixed(2)}s</td>
+                                    <td>${(stats.min_latency_ms / 1000).toFixed(2)}s / ${(stats.max_latency_ms / 1000).toFixed(2)}s</td>
+                                    <td>${stats.avg_pages !== null ? stats.avg_pages.toFixed(1) : '<span class="metric-neutral">N/A</span>'}</td>
+                                    <td>${stats.total_pages !== null ? stats.total_pages : '<span class="metric-neutral">N/A</span>'}</td>
+                                </tr>
+                            `;
+                        }
+                        
+                        breakdownRows += '</tbody>';
+                        breakdownTable.innerHTML = breakdownRows;
+                        section.appendChild(breakdownTable);
+                    }
+                    
+                    if (result.documents && result.documents.length > 0) {
+                        const docsTitle = document.createElement('h4');
+                        docsTitle.textContent = 'Document Processing Details';
+                        docsTitle.style.marginTop = '1.5rem';
+                        section.appendChild(docsTitle);
+                        
+                        const docsTable = document.createElement('table');
+                        let docsRows = '<thead><tr><th>Document</th><th>Size (MB)</th><th>Category</th><th>Latency</th><th>Pages</th><th>Processing Time</th><th>Tokens</th><th>Status</th></tr></thead><tbody>';
+                        
+                        result.documents.forEach(doc => {
+                            docsRows += `
+                                <tr>
+                                    <td>${doc.file_name}</td>
+                                    <td>${doc.file_size_mb.toFixed(2)}</td>
+                                    <td>${doc.size_category}</td>
+                                    <td>${doc.latency_ms ? (doc.latency_ms / 1000).toFixed(2) + 's' : '<span class="metric-neutral">N/A</span>'}</td>
+                                    <td>${doc.pages !== null ? doc.pages : '<span class="metric-neutral">N/A</span>'}</td>
+                                    <td>${doc.processing_time_ms !== null ? (doc.processing_time_ms / 1000).toFixed(2) + 's' : '<span class="metric-neutral">N/A</span>'}</td>
+                                    <td>${doc.tokens_used !== null ? doc.tokens_used.toLocaleString() : '<span class="metric-neutral">N/A</span>'}</td>
+                                    <td class="${doc.success ? 'metric-good' : 'metric-bad'}">
+                                        ${doc.success ? '✓ Success' : '✗ Failed'}
+                                    </td>
+                                </tr>
+                            `;
+                        });
+                        
+                        docsRows += '</tbody>';
+                        docsTable.innerHTML = docsRows;
+                        section.appendChild(docsTable);
+                    }
+                    
+                    container.appendChild(section);
+                });
+            } catch (error) {
+                console.error('Failed to load benchmarks:', error);
+                document.getElementById('benchmark-tables').innerHTML = 
+                    '<p class="metric-bad">Failed to load benchmark data. Please try again later.</p>';
             }
-            
-            const summaryTable = document.getElementById('benchmark-summary');
-            const detailsTable = document.getElementById('benchmark-details');
-            
-            benchmarkData.results.forEach(result => {
-                const successRate = ((result.successful_requests / result.total_requests) * 100).toFixed(1);
-                const isSuccess = result.successful_requests === result.total_requests;
-                
-                const summaryRow = document.createElement('tr');
-                summaryRow.innerHTML = `
-                    <td><code>${result.endpoint}</code></td>
-                    <td class="${isSuccess ? 'metric-good' : 'metric-bad'}">
-                        ${successRate}% (${result.successful_requests}/${result.total_requests})
-                    </td>
-                    <td>${(result.avg_latency_ms / 1000).toFixed(2)}s</td>
-                    <td>${(result.min_latency_ms / 1000).toFixed(1)}s / ${(result.max_latency_ms / 1000).toFixed(1)}s</td>
-                    <td>${result.throughput_mb_per_second.toFixed(2)} MB/s</td>
-                    <td>${result.requests_per_second.toFixed(4)}</td>
-                `;
-                summaryTable.appendChild(summaryRow);
-                
-                if (result.documents) {
-                    result.documents.forEach(doc => {
-                        const detailRow = document.createElement('tr');
-                        detailRow.innerHTML = `
-                            <td><code>${result.endpoint}</code></td>
-                            <td>${doc.file_name}</td>
-                            <td>${doc.file_size_mb.toFixed(2)}</td>
-                            <td>${doc.pages !== null ? doc.pages : '<span class="metric-neutral">N/A</span>'}</td>
-                            <td>${doc.latency_ms ? (doc.latency_ms / 1000).toFixed(2) + 's' : '<span class="metric-neutral">N/A</span>'}</td>
-                            <td>${doc.tokens_used !== null ? doc.tokens_used.toLocaleString() : '<span class="metric-neutral">N/A</span>'}</td>
-                            <td class="${doc.success ? 'metric-good' : 'metric-bad'}">
-                                ${doc.success ? '✓ Success' : '✗ Failed'}
-                            </td>
-                        `;
-                        detailsTable.appendChild(detailRow);
-                    });
-                }
-            });
-        });
+        }
+        
+        document.addEventListener('DOMContentLoaded', loadBenchmarks);
     </script>
 </body>
 </html>
