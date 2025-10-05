@@ -41,7 +41,10 @@ Required environment variables:
 - `AWS_SECRET_ACCESS_KEY` - S3 secret key
 - `S3_BUCKET` - S3 bucket name for document storage
 - `AWS_ENDPOINT_URL_S3` - S3 endpoint URL
-- `API_KEY` - Optional API key for authentication
+- `API_KEY` - API key(s) for authentication (comma-separated for ACL support)
+  - If set, ALL endpoints require valid Bearer token except: `/health`, `/docs`, `/openapi.json`
+  - Supports multiple keys: `API_KEY=key1,key2,key3`
+  - Each key is tracked independently in usage and document records
 
 ## Architecture
 
@@ -106,7 +109,11 @@ Required environment variables:
 4. **Local-First Database**: Default mode uses local SQLite (`./data/ilios.db`), no remote required
 5. **WAL Mode**: Database uses WAL journaling with 5-second busy timeout for concurrent access
 6. **Optional Turso Sync**: Enable with `USE_EMBEDDED_REPLICA=true` for edge replica sync
-7. **Security**: Optional API key authentication via `API_KEY` environment variable
+7. **Security**: 
+   - API key authentication via `API_KEY` environment variable (supports ACL with comma-separated keys)
+   - When `API_KEY` is set, all endpoints require `Authorization: Bearer <key>` except public paths
+   - Public paths (no auth required): `/health`, `/docs`, `/openapi.json`
+   - All API keys are tracked in `documents.apiKey` and `usage.apiKey` for usage isolation
 8. **File Limits**: Supports files up to 1GB, configurable retention (1-3650 days)
 9. **Data Directory**: `./data/` is gitignored, contains:
    - `ilios.db` - Main SQLite database (shared by all processes)

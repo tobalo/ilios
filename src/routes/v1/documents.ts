@@ -39,8 +39,8 @@ export function createDocumentRoutes(db: DatabaseService, s3: S3Service) {
         mimeType: mimeType || 'application/octet-stream',
         fileSize,
         s3Key,
-        userId: undefined, // Would be set by auth middleware
-        apiKey: undefined, // Would be set by auth middleware
+        userId: c.get('userId'),
+        apiKey: c.get('apiKey'),
         retentionDays: body.retentionDays,
       });
       
@@ -195,8 +195,8 @@ export function createDocumentRoutes(db: DatabaseService, s3: S3Service) {
         mimeType: mimeType,
         fileSize: file.size,
         s3Key,
-        userId: undefined, // Would be set by auth middleware
-        apiKey: undefined, // Would be set by auth middleware
+        userId: c.get('userId'),
+        apiKey: c.get('apiKey'),
         retentionDays: params.retentionDays,
       });
 

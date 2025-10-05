@@ -71,8 +71,8 @@ export function createConvertRoutes(db: DatabaseService, mistral: MistralService
         mimeType: mimeType,
         fileSize: file.size,
         s3Key: `convert/${Date.now()}-${file.name}`,
-        userId: undefined,
-        apiKey: undefined,
+        userId: c.get('userId'),
+        apiKey: c.get('apiKey'),
         retentionDays: params.retentionDays,
       });
 
@@ -119,8 +119,8 @@ export function createConvertRoutes(db: DatabaseService, mistral: MistralService
       const costData = mistral.calculateCost(result.usage);
       await db.trackUsage({
         documentId,
-        userId: undefined,
-        apiKey: undefined,
+        userId: c.get('userId'),
+        apiKey: c.get('apiKey'),
         operation: 'convert-immediate',
         inputTokens: result.usage.prompt_tokens,
         outputTokens: result.usage.completion_tokens,

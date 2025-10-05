@@ -1,6 +1,7 @@
 import { Context, Next } from 'hono';
 
-const PUBLIC_PATHS = ['/health', '/docs', '/openapi.json'];
+const PUBLIC_PATHS = ['/health', '/docs', '/openapi.json', '/'];
+const PUBLIC_PATH_PREFIXES = ['/images/', '/benchmarks/'];
 
 function parseApiKeys(apiKeyEnv: string | undefined): string[] {
   if (!apiKeyEnv) return [];
@@ -17,7 +18,7 @@ export async function authMiddleware(c: Context, next: Next) {
   }
 
   const path = c.req.path;
-  if (PUBLIC_PATHS.includes(path)) {
+  if (PUBLIC_PATHS.includes(path) || PUBLIC_PATH_PREFIXES.some(prefix => path.startsWith(prefix))) {
     await next();
     return;
   }

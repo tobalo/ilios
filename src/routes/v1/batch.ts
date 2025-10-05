@@ -60,8 +60,8 @@ export function createBatchRoutes(db: DatabaseService, s3: S3Service) {
       const batchId = await db.createBatch({
         totalDocuments: files.length,
         priority: params.priority,
-        userId: undefined,
-        apiKey: undefined,
+        userId: c.get('userId'),
+        apiKey: c.get('apiKey'),
       });
 
       console.log(`[Batch] Created batch ${batchId} with ${files.length} files`);
@@ -95,8 +95,8 @@ export function createBatchRoutes(db: DatabaseService, s3: S3Service) {
           mimeType: mimeType,
           fileSize: file.size,
           s3Key,
-          userId: undefined,
-          apiKey: undefined,
+          userId: c.get('userId'),
+          apiKey: c.get('apiKey'),
           retentionDays: params.retentionDays,
           batchId,
         });
