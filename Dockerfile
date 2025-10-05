@@ -20,15 +20,20 @@ RUN mkdir -p /app/data/tmp && chmod -R 777 /app/data
 FROM base AS release
 COPY --from=install /temp/prod/node_modules node_modules
 COPY --from=build /app/src src
+COPY --from=build /app/public public
 COPY --from=build /app/package.json .
 COPY --from=build /app/drizzle.config.ts .
 COPY --from=build /app/data data
+COPY start.sh .
 
 # Ensure migrations are available
 RUN test -d /app/src/db/migrations || echo "Warning: migrations directory not found"
 
-# Ensure data directory is writable (will be replaced by volume mount in Railway)
-RUN mkdir -p /data/tmp && chmod -R 777 /data
+# Create data directory with proper ownership (will be replaced by volume mount in Railway)
+RUN mkdir -p /data/tmp && \
+    chown -R bun:bun /data && \
+    chmod -R 775 /data && \
+    chmod +x start.sh
 
 # Set default database path to volume mount location
 ENV LOCAL_DB_PATH=/data/ilios.db
@@ -42,4 +47,4 @@ EXPOSE 1337/tcp
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD bun -e "fetch('http://localhost:1337').then(() => process.exit(0)).catch(() => process.exit(1))"
 
-ENTRYPOINT ["bun", "run", "start"]
+ENTRYPOINT ["./start.sh"]
