@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { DatabaseService } from '../services/database';
-import { S3Service } from '../services/s3';
+import { DatabaseService } from '../../services/database';
+import { S3Service } from '../../services/s3';
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1GB
 const LARGE_FILE_THRESHOLD = 10 * 1024 * 1024; // 10MB - Use streaming for files larger than this

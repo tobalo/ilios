@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/libsql';
 import { createClient } from '@libsql/client';
-import { documents, usage, jobQueue, workers } from '../db/schema';
+import { documents, usage, jobQueue, workers, batches } from '../db/schema';
 import { eq, and, lt, sql, desc, notInArray, isNotNull } from 'drizzle-orm';
 import { createId } from '@paralleldrive/cuid2';
 import * as path from 'path';
@@ -110,6 +110,7 @@ export class DatabaseService {
     userId?: string;
     apiKey?: string;
     retentionDays?: number;
+    batchId?: string;
   }) {
     const id = createId();
     await this.db.insert(documents).values({
@@ -418,5 +419,74 @@ export class DatabaseService {
     }
     
     return docsToArchive.length;
+  }
+
+  async createBatch(data: {
+    userId?: string;
+    apiKey?: string;
+    totalDocuments: number;
+    priority?: number;
+    metadata?: any;
+  }) {
+    const id = createId();
+    await this.db.insert(batches).values({
+      id,
+      ...data,
+      status: 'pending',
+    });
+    return id;
+  }
+
+  async getBatch(id: string) {
+    const [batch] = await this.db.select().from(batches).where(eq(batches.id, id));
+    return batch;
+  }
+
+  async updateBatchProgress(batchId: string) {
+    const batchDocs = await this.db.select()
+      .from(documents)
+      .where(eq(documents.batchId, batchId));
+
+    const completed = batchDocs.filter(d => d.status === 'completed').length;
+    const failed = batchDocs.filter(d => d.status === 'failed').length;
+    const total = batchDocs.length;
+
+    const allDone = completed + failed === total;
+    const batchStatus = allDone 
+      ? (failed === total ? 'failed' : 'completed')
+      : (completed > 0 || failed > 0 ? 'processing' : 'pending');
+
+    await this.db.update(batches)
+      .set({
+        completedDocuments: completed,
+        failedDocuments: failed,
+        status: batchStatus,
+        ...(allDone && { completedAt: new Date() }),
+      })
+      .where(eq(batches.id, batchId));
+
+    return { completed, failed, total, status: batchStatus };
+  }
+
+  async getBatchDocuments(batchId: string) {
+    return await this.db.select()
+      .from(documents)
+      .where(eq(documents.batchId, batchId))
+      .orderBy(documents.createdAt);
+  }
+
+  async listBatches(filters?: { userId?: string; apiKey?: string; status?: string }) {
+    let query = this.db.select().from(batches);
+
+    const conditions = [];
+    if (filters?.userId) conditions.push(eq(batches.userId, filters.userId));
+    if (filters?.apiKey) conditions.push(eq(batches.apiKey, filters.apiKey));
+    if (filters?.status) conditions.push(eq(batches.status, filters.status));
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
+    }
+
+    return await query.orderBy(desc(batches.createdAt));
   }
 }

@@ -17,10 +17,12 @@ export const documents = sqliteTable('documents', {
   retentionDays: integer('retention_days').notNull().default(365),
   userId: text('user_id'),
   apiKey: text('api_key'),
+  batchId: text('batch_id'),
 }, (table) => ({
   statusIdx: index('status_idx').on(table.status),
   createdAtIdx: index('created_at_idx').on(table.createdAt),
   userIdIdx: index('user_id_idx').on(table.userId),
+  batchIdIdx: index('batch_id_idx').on(table.batchId),
 }));
 
 export const usage = sqliteTable('usage', {
@@ -64,7 +66,6 @@ export const jobQueue = sqliteTable('job_queue', {
   workerIdx: index('worker_idx').on(table.workerId),
 }));
 
-// Track active workers
 export const workers = sqliteTable('workers', {
   id: text('id').primaryKey(),
   pid: integer('pid').notNull(),
@@ -75,4 +76,22 @@ export const workers = sqliteTable('workers', {
 }, (table) => ({
   statusIdx: index('worker_status_idx').on(table.status),
   heartbeatIdx: index('heartbeat_idx').on(table.lastHeartbeat),
+}));
+
+export const batches = sqliteTable('batches', {
+  id: text('id').primaryKey(),
+  userId: text('user_id'),
+  apiKey: text('api_key'),
+  totalDocuments: integer('total_documents').notNull(),
+  completedDocuments: integer('completed_documents').notNull().default(0),
+  failedDocuments: integer('failed_documents').notNull().default(0),
+  status: text('status', { enum: ['pending', 'processing', 'completed', 'failed'] }).notNull().default('pending'),
+  priority: integer('priority').notNull().default(5),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  completedAt: integer('completed_at', { mode: 'timestamp' }),
+  metadata: text('metadata', { mode: 'json' }),
+}, (table) => ({
+  statusIdx: index('batch_status_idx').on(table.status),
+  createdAtIdx: index('batch_created_at_idx').on(table.createdAt),
+  userIdIdx: index('batch_user_id_idx').on(table.userId),
 }));

@@ -1,9 +1,9 @@
 export const openAPISpec = {
   openapi: '3.0.0',
   info: {
-    title: 'Convert Docs API',
-    version: '2.0.0',
-    description: 'API for converting documents to markdown using Mistral OCR',
+    title: 'Ilios API',
+    version: '2.1.0',
+    description: 'Document-to-markdown conversion API with immediate OCR and batch processing using Mistral AI',
   },
   servers: [
     {
@@ -134,6 +134,74 @@ export const openAPISpec = {
           error: { type: 'string' },
           message: { type: 'string' },
           details: { type: 'object', nullable: true },
+        },
+      },
+      ConvertResponse: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Document ID for retrieval' },
+          content: { type: 'string', description: 'Extracted markdown content' },
+          metadata: {
+            type: 'object',
+            properties: {
+              model: { type: 'string' },
+              extractedPages: { type: 'integer' },
+              processingTimeMs: { type: 'integer' },
+              fileName: { type: 'string' },
+              fileSize: { type: 'integer' },
+              mimeType: { type: 'string' },
+            },
+          },
+          usage: {
+            type: 'object',
+            properties: {
+              prompt_tokens: { type: 'integer' },
+              completion_tokens: { type: 'integer' },
+              total_tokens: { type: 'integer' },
+            },
+          },
+          downloadUrl: { type: 'string', description: 'URL to download document later' },
+        },
+      },
+      BatchSubmitResponse: {
+        type: 'object',
+        properties: {
+          batchId: { type: 'string' },
+          status: { type: 'string', enum: ['queued'] },
+          totalDocuments: { type: 'integer' },
+          documents: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                fileName: { type: 'string' },
+                fileSize: { type: 'integer' },
+                status: { type: 'string' },
+              },
+            },
+          },
+          statusUrl: { type: 'string' },
+        },
+      },
+      BatchStatusResponse: {
+        type: 'object',
+        properties: {
+          batchId: { type: 'string' },
+          status: { type: 'string', enum: ['pending', 'processing', 'completed', 'failed'] },
+          progress: {
+            type: 'object',
+            properties: {
+              total: { type: 'integer' },
+              pending: { type: 'integer' },
+              processing: { type: 'integer' },
+              completed: { type: 'integer' },
+              failed: { type: 'integer' },
+            },
+          },
+          createdAt: { type: 'string', format: 'date-time' },
+          completedAt: { type: 'string', format: 'date-time', nullable: true },
+          downloadUrl: { type: 'string', nullable: true },
         },
       },
     },
@@ -505,6 +573,215 @@ export const openAPISpec = {
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/UsageBreakdown' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/v1/convert': {
+      post: {
+        summary: 'Convert Document (Immediate)',
+        description: 'Convert a document to markdown immediately. Creates database record for retrieval but no S3 upload or job queue.',
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['file'],
+                properties: {
+                  file: {
+                    type: 'string',
+                    format: 'binary',
+                    description: 'Document file to convert (max 1GB)',
+                  },
+                  format: {
+                    type: 'string',
+                    enum: ['markdown', 'json'],
+                    default: 'markdown',
+                    description: 'Response format',
+                  },
+                  retentionDays: {
+                    type: 'integer',
+                    minimum: 1,
+                    maximum: 3650,
+                    description: 'Days to retain document record',
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Document converted successfully',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ConvertResponse' },
+              },
+              'text/markdown': {
+                schema: { type: 'string' },
+              },
+            },
+          },
+          '400': {
+            description: 'Bad request',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          '500': {
+            description: 'Conversion failed',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/v1/batch/submit': {
+      post: {
+        summary: 'Submit Batch for Processing',
+        description: 'Submit multiple documents for batch processing. Documents are queued and processed asynchronously.',
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['files'],
+                properties: {
+                  files: {
+                    type: 'array',
+                    items: {
+                      type: 'string',
+                      format: 'binary',
+                    },
+                    description: 'Document files (max 100 files, 1GB each)',
+                  },
+                  retentionDays: {
+                    type: 'integer',
+                    minimum: 1,
+                    maximum: 3650,
+                    description: 'Days to retain documents',
+                  },
+                  priority: {
+                    type: 'integer',
+                    minimum: 1,
+                    maximum: 10,
+                    default: 5,
+                    description: 'Processing priority (higher = faster)',
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '202': {
+            description: 'Batch accepted for processing',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/BatchSubmitResponse' },
+              },
+            },
+          },
+          '400': {
+            description: 'Bad request',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/v1/batch/status/{batchId}': {
+      get: {
+        summary: 'Get Batch Status',
+        description: 'Check the processing status of a batch',
+        parameters: [
+          {
+            name: 'batchId',
+            in: 'path',
+            required: true,
+            description: 'Batch ID',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'details',
+            in: 'query',
+            description: 'Include detailed document list',
+            schema: { type: 'boolean', default: false },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Batch status',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/BatchStatusResponse' },
+              },
+            },
+          },
+          '404': {
+            description: 'Batch not found',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/v1/batch/download/{batchId}': {
+      get: {
+        summary: 'Download Batch Results',
+        description: 'Download all completed batch results in JSONL format',
+        parameters: [
+          {
+            name: 'batchId',
+            in: 'path',
+            required: true,
+            description: 'Batch ID',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'format',
+            in: 'query',
+            description: 'Download format',
+            schema: { type: 'string', enum: ['jsonl'], default: 'jsonl' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Batch results',
+            content: {
+              'application/x-ndjson': {
+                schema: { type: 'string' },
+              },
+            },
+          },
+          '400': {
+            description: 'Batch not ready',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
+          '404': {
+            description: 'Batch not found',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
               },
             },
           },

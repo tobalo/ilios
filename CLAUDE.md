@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Convert Docs API v2 - A document-to-markdown conversion API using Turso (edge SQLite), Tigris S3, and Mistral OCR.
+Ilios API v2.1 - A production-ready document-to-markdown conversion API with immediate OCR and batch processing, using local-first SQLite, Tigris S3, and Mistral AI OCR.
 
 ## Essential Commands
 
@@ -21,6 +21,12 @@ bun run db:generate    # Generate Drizzle types from schema
 bun run db:push       # Push schema changes to database
 bun run db:studio     # Open Drizzle Studio for visual DB management
 ```
+
+### New v2.1 Endpoints
+- **POST /v1/convert** - Immediate OCR conversion (synchronous, no S3, no queue, saves to DB)
+- **POST /v1/batch/submit** - Submit batch for processing
+- **GET /v1/batch/status/:batchId** - Check batch progress
+- **GET /v1/batch/download/:batchId** - Download completed batch results
 
 ### Environment Setup
 Required environment variables:
@@ -55,16 +61,24 @@ Required environment variables:
 - **Worker Spawn**: Uses Bun's spawn API for process-based workers
 
 ### Database Schema (`src/db/schema.ts`)
-- `documents` - Document metadata, content, and processing status
+- `documents` - Document metadata, content, processing status, and optional `batchId`
+- `batches` - Batch metadata, progress tracking, and status
 - `usage` - API usage tracking with token counts
-- `jobQueue` - Async job management
+- `jobQueue` - Async job management (processes both single and batch documents)
 - `workers` - Active worker process tracking
 - Migrations stored in `src/db/migrations/`
 
 ### API Routes
+**v1 Routes** (New in v2.1):
+- `/v1/convert` - Immediate OCR (no S3 upload, no job queue, synchronous processing, saves to DB)
+- `/v1/batch/submit` - Batch document submission
+- `/v1/batch/status/:batchId` - Batch progress tracking
+- `/v1/batch/download/:batchId` - Download batch results
+
+**Legacy Routes**:
 - `/api/documents/*` - Document submission, status, and retrieval
 - `/api/usage/*` - Usage tracking and billing endpoints
-- All routes defined in `src/routes/`
+- All routes defined in `src/routes/v1/`
 
 ### Worker Architecture
 - Main process spawns worker processes (`src/services/job-processor-spawn.ts`)
@@ -74,6 +88,9 @@ Required environment variables:
 - **Job State Flow**: `pending` → `processing` → `completed`|`failed`
   - Failed jobs auto-retry with exponential backoff if attempts < maxAttempts
   - Orphaned jobs (worker died) are reset to `pending` or marked `failed` based on attempt count
+- **Worker-Agnostic Processing**: Workers process jobs from queue without distinction between single/batch documents
+  - Batch progress automatically updated after each document completion
+  - Batch status transitions: `pending` → `processing` → `completed`|`failed`
 - Automatic worker lifecycle management with health checks
 - Configurable worker count (default: 2)
 - Heartbeat monitoring every 30 seconds with retry on SQLITE_BUSY
@@ -98,9 +115,10 @@ Required environment variables:
 ## Common Tasks
 
 ### Adding New Routes
-1. Create route file in `src/routes/`
-2. Define OpenAPI schema using Hono's zod-openapi
-3. Register route in `src/index.ts`
+1. Create route file in `src/routes/v1/`
+2. Define route handler function (e.g., `createMyRoutes(dependencies)`)
+3. Register route in `src/index.ts` using `app.route('/v1/myroute', createMyRoutes(...))`
+4. Update `src/openapi.ts` with new endpoint schemas
 
 ### Modifying Database Schema
 1. Edit `src/db/schema.ts`

@@ -1,3 +1,20 @@
+CREATE TABLE `batches` (
+	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text,
+	`api_key` text,
+	`total_documents` integer NOT NULL,
+	`completed_documents` integer DEFAULT 0 NOT NULL,
+	`failed_documents` integer DEFAULT 0 NOT NULL,
+	`status` text DEFAULT 'pending' NOT NULL,
+	`priority` integer DEFAULT 5 NOT NULL,
+	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
+	`completed_at` integer,
+	`metadata` text
+);
+--> statement-breakpoint
+CREATE INDEX `batch_status_idx` ON `batches` (`status`);--> statement-breakpoint
+CREATE INDEX `batch_created_at_idx` ON `batches` (`created_at`);--> statement-breakpoint
+CREATE INDEX `batch_user_id_idx` ON `batches` (`user_id`);--> statement-breakpoint
 CREATE TABLE `documents` (
 	`id` text PRIMARY KEY NOT NULL,
 	`file_name` text NOT NULL,
@@ -13,12 +30,14 @@ CREATE TABLE `documents` (
 	`archived_at` integer,
 	`retention_days` integer DEFAULT 365 NOT NULL,
 	`user_id` text,
-	`api_key` text
+	`api_key` text,
+	`batch_id` text
 );
 --> statement-breakpoint
 CREATE INDEX `status_idx` ON `documents` (`status`);--> statement-breakpoint
 CREATE INDEX `created_at_idx` ON `documents` (`created_at`);--> statement-breakpoint
 CREATE INDEX `user_id_idx` ON `documents` (`user_id`);--> statement-breakpoint
+CREATE INDEX `batch_id_idx` ON `documents` (`batch_id`);--> statement-breakpoint
 CREATE TABLE `job_queue` (
 	`id` text PRIMARY KEY NOT NULL,
 	`document_id` text NOT NULL,

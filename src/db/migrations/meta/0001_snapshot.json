@@ -1,9 +1,123 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "e719fc53-68b8-4751-acfe-49e7ded74b66",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "4d256b27-6e2d-46d3-aa20-a9c6a4c0b0a0",
+  "prevId": "e719fc53-68b8-4751-acfe-49e7ded74b66",
   "tables": {
+    "batches": {
+      "name": "batches",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "api_key": {
+          "name": "api_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "total_documents": {
+          "name": "total_documents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_documents": {
+          "name": "completed_documents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "failed_documents": {
+          "name": "failed_documents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pending'"
+        },
+        "priority": {
+          "name": "priority",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 5
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "batch_status_idx": {
+          "name": "batch_status_idx",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        },
+        "batch_created_at_idx": {
+          "name": "batch_created_at_idx",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "batch_user_id_idx": {
+          "name": "batch_user_id_idx",
+          "columns": [
+            "user_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "documents": {
       "name": "documents",
       "columns": {
@@ -114,6 +228,13 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -135,6 +256,13 @@
           "name": "user_id_idx",
           "columns": [
             "user_id"
+          ],
+          "isUnique": false
+        },
+        "batch_id_idx": {
+          "name": "batch_id_idx",
+          "columns": [
+            "batch_id"
           ],
           "isUnique": false
         }

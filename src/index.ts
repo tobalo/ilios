@@ -2,12 +2,11 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { swaggerUI } from '@hono/swagger-ui';
-import { DatabaseService } from './services/database';
-import { S3Service } from './services/s3';
-import { MistralService } from './services/mistral';
-import { JobProcessorSpawn } from './services/job-processor-spawn';
-import { createDocumentRoutes } from './routes/documents';
-import { createUsageRoutes } from './routes/usage';
+import { initializeServices, startJobProcessor } from './services';
+import { createDocumentRoutes } from './routes/v1/documents';
+import { createUsageRoutes } from './routes/v1/usage';
+import { createConvertRoutes } from './routes/v1/convert';
+import { createBatchRoutes } from './routes/v1/batch';
 import { authMiddleware } from './middleware/auth';
 import { errorHandler } from './middleware/error';
 import { openAPISpec } from './openapi';
@@ -19,12 +18,17 @@ app.use('*', logger());
 app.use('*', errorHandler);
 
 app.use('/api/*', authMiddleware);
+app.use('/v1/*', authMiddleware);
 
 app.get('/', (c) => {
   return c.json({
-    name: 'Convert Docs API',
-    version: '2.0.0',
+    name: 'Ilios API',
+    version: '2.1.0',
     endpoints: {
+      convert: 'POST /v1/convert',
+      batchSubmit: 'POST /v1/batch/submit',
+      batchStatus: 'GET /v1/batch/status/:batchId',
+      batchDownload: 'GET /v1/batch/download/:batchId',
       uploadUrl: 'POST /api/documents/upload-url',
       uploadComplete: 'POST /api/documents/upload-complete/:id',
       submit: 'POST /api/documents/submit',
@@ -44,14 +48,7 @@ app.get('/openapi.json', (c) => {
 app.get('/docs', swaggerUI({ url: '/openapi.json' }));
 
 app.get('/health', async (c) => {
-  const env = process.env as any;
-  
   try {
-    const db = new DatabaseService(
-      env.TURSO_DATABASE_URL,
-      env.TURSO_AUTH_TOKEN
-    );
-    
     await db.getDocument('health-check');
     
     return c.json({
@@ -71,37 +68,9 @@ app.get('/health', async (c) => {
   }
 });
 
-const initializeServices = (env: any) => {
-  const useEmbeddedReplica = env.USE_EMBEDDED_REPLICA !== 'false';
-  
-  const db = new DatabaseService(
-    useEmbeddedReplica ? env.TURSO_DATABASE_URL : undefined,
-    useEmbeddedReplica ? env.TURSO_AUTH_TOKEN : undefined,
-    {
-      localDbPath: env.LOCAL_DB_PATH || './data/ilios.db',
-      syncIntervalSeconds: parseInt(env.TURSO_SYNC_INTERVAL || '60'),
-      encryptionKey: env.DB_ENCRYPTION_KEY,
-      useEmbeddedReplica,
-    }
-  );
-
-  const s3 = new S3Service({
-    accessKeyId: env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-    endpoint: env.AWS_ENDPOINT_URL_S3 || 'https://fly.storage.tigris.dev',
-    bucket: env.S3_BUCKET || 'convert-docs',
-  });
-
-  const mistral = new MistralService(env.MISTRAL_API_KEY);
-
-  return { db, s3, mistral };
-};
-
-// Initialize services once
 const env = process.env as any;
 const { db, s3, mistral } = initializeServices(env);
 
-// Test S3 connection on startup
 s3.testConnection().then(connected => {
   if (!connected) {
     console.error('[Main] WARNING: S3 connection test failed during startup');
@@ -110,33 +79,20 @@ s3.testConnection().then(connected => {
   console.error('[Main] ERROR: S3 connection test failed:', err);
 });
 
-// Mount document routes
 const documentRoutes = createDocumentRoutes(db, s3);
 app.route('/api/documents', documentRoutes);
 
-// Mount usage routes
 const usageRoutes = createUsageRoutes(db);
 app.route('/api/usage', usageRoutes);
 
-// Start job processor
-let jobProcessor: JobProcessorSpawn | null = null;
-let isJobProcessorStarted = false;
+const convertRoutes = createConvertRoutes(db, mistral);
+app.route('/v1/convert', convertRoutes);
 
-const startJobProcessor = async () => {
-  if (!jobProcessor && !isJobProcessorStarted) {
-    isJobProcessorStarted = true;
-    
-    await db.cleanupOrphanedJobs();
-    
-    jobProcessor = new JobProcessorSpawn(db, 2);
-    await jobProcessor.start();
-    console.log('Job processor started with 2 workers');
-  }
-};
+const batchRoutes = createBatchRoutes(db, s3);
+app.route('/v1/batch', batchRoutes);
 
-startJobProcessor();
+let jobProcessor = await startJobProcessor(db, 2);
 
-// Graceful shutdown handler
 let isShuttingDown = false;
 
 const gracefulShutdown = async (signal: string) => {
@@ -147,7 +103,6 @@ const gracefulShutdown = async (signal: string) => {
   
   if (jobProcessor) {
     await jobProcessor.stop();
-    jobProcessor = null;
   }
   
   await db.close();

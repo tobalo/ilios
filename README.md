@@ -2,9 +2,15 @@
 
 A production-ready document-to-markdown conversion API built with Bun, featuring local-first architecture, atomic job processing, and automatic retry logic.
 
-### TODO: 
-- Add batch submit and req/reply markdown convert endpoints
--- Evaluation and processing benchmarks
+### Recent Updates (v2.1.0)
+✅ **Immediate OCR Conversion** - `/v1/convert` endpoint for real-time document conversion  
+✅ **Batch Processing** - `/v1/batch/*` endpoints for multi-document processing  
+✅ **Modular Architecture** - Service initialization moved to `src/services/index.ts`  
+✅ **Worker-Agnostic Jobs** - Queue processes batch and single documents identically  
+
+### TODO:
+- ACL for sanctioned usage of service
+- Push job completion on submit and batch endpoints to enable event driven automation/pipelines of ilios
 
 ## Features
 
@@ -253,6 +259,7 @@ bun run dev
 Server starts at `http://localhost:1337`
 - API docs: `http://localhost:1337/docs` (Swagger UI)
 - Health check: `http://localhost:1337/health`
+- Endpoints: `http://localhost:1337/` (list all endpoints)
 
 ### API Key Setup
 
@@ -272,6 +279,122 @@ curl -F "file=@document.pdf" \
 To disable authentication, remove or comment out `API_KEY` in `.env`.
 
 ## API Usage
+
+### Immediate Conversion (v1 - No Queue)
+
+Convert documents instantly with synchronous processing (no S3 upload, no job queue):
+
+```bash
+# Get markdown response
+curl -X POST http://localhost:1337/v1/convert \
+  -H "Authorization: Bearer your_api_key" \
+  -F "file=@document.pdf"
+
+# Get JSON response with metadata
+curl -X POST http://localhost:1337/v1/convert \
+  -H "Authorization: Bearer your_api_key" \
+  -F "file=@document.pdf" \
+  -F "format=json"
+```
+
+**Response (JSON format):**
+```json
+{
+  "id": "cm5xabc123...",
+  "content": "# Extracted Markdown\n\nDocument content...",
+  "metadata": {
+    "model": "mistral-ocr-latest",
+    "extractedPages": 5,
+    "processingTimeMs": 2340,
+    "fileName": "document.pdf",
+    "fileSize": 1234567,
+    "mimeType": "application/pdf"
+  },
+  "usage": {
+    "prompt_tokens": 1500,
+    "completion_tokens": 0,
+    "total_tokens": 1500
+  },
+  "downloadUrl": "/api/documents/cm5xabc123..."
+}
+```
+
+**Response (Markdown format):**
+```markdown
+# Extracted Markdown
+
+Document content...
+```
+*Headers: `X-Document-Id: cm5xabc123...`, `X-Processing-Time-Ms: 2340`, `X-Extracted-Pages: 5`*
+
+**Note:** Document is saved to database for later retrieval via `/api/documents/:id` endpoint.
+
+### Batch Processing (v1)
+
+Submit multiple documents for asynchronous processing:
+
+```bash
+# Submit batch
+curl -X POST http://localhost:1337/v1/batch/submit \
+  -H "Authorization: Bearer your_api_key" \
+  -F "files=@doc1.pdf" \
+  -F "files=@doc2.pdf" \
+  -F "files=@doc3.pdf" \
+  -F "priority=8" \
+  -F "retentionDays=365"
+```
+
+**Response:**
+```json
+{
+  "batchId": "cm5xabc123...",
+  "status": "queued",
+  "totalDocuments": 3,
+  "documents": [
+    { "id": "doc_1", "fileName": "doc1.pdf", "fileSize": 123456, "status": "pending" },
+    { "id": "doc_2", "fileName": "doc2.pdf", "fileSize": 234567, "status": "pending" },
+    { "id": "doc_3", "fileName": "doc3.pdf", "fileSize": 345678, "status": "pending" }
+  ],
+  "statusUrl": "/v1/batch/status/cm5xabc123..."
+}
+```
+
+**Check batch status:**
+```bash
+curl http://localhost:1337/v1/batch/status/cm5xabc123 \
+  -H "Authorization: Bearer your_api_key"
+```
+
+**Response:**
+```json
+{
+  "batchId": "cm5xabc123...",
+  "status": "processing",
+  "progress": {
+    "total": 3,
+    "pending": 0,
+    "processing": 1,
+    "completed": 2,
+    "failed": 0
+  },
+  "createdAt": "2024-01-15T10:30:00.000Z",
+  "downloadUrl": null
+}
+```
+
+**Download completed batch:**
+```bash
+curl http://localhost:1337/v1/batch/download/cm5xabc123?format=jsonl \
+  -H "Authorization: Bearer your_api_key" \
+  -o batch-results.jsonl
+```
+
+**JSONL format:**
+```jsonl
+{"id":"doc_1","fileName":"doc1.pdf","status":"completed","content":"# Document 1\n...","metadata":{...}}
+{"id":"doc_2","fileName":"doc2.pdf","status":"completed","content":"# Document 2\n...","metadata":{...}}
+{"id":"doc_3","fileName":"doc3.pdf","status":"failed","error":"OCR processing failed: timeout"}
+```
 
 ### Submit Document for Conversion
 

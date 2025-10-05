@@ -174,11 +174,21 @@ class JobWorker {
         baseCostCents: costData.baseCostCents,
       });
 
+      if (document.batchId) {
+        await this.db.updateBatchProgress(document.batchId);
+      }
+
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       await this.db.updateDocumentStatus(job.documentId, 'failed', {
         error: errorMessage,
       });
+      
+      const document = await this.db.getDocument(job.documentId);
+      if (document?.batchId) {
+        await this.db.updateBatchProgress(document.batchId);
+      }
+      
       await this.db.failJob(job.id, errorMessage);
       throw error;
     } finally {
