@@ -11,7 +11,7 @@ export const openAPISpec = {
       description: 'Development server',
     },
     {
-      url: 'https://api.convert-docs.com',
+      url: 'https://ilios.sh',
       description: 'Production server',
     },
   ],
