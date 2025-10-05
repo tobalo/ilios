@@ -94,15 +94,16 @@ export class JobProcessorSpawn {
       },
       stdout: 'pipe',
       stderr: 'pipe',
-      stdin: 'pipe',
-      ipc: undefined,
+      stdin: 'ignore',
+      ipc: (message) => {
+        this.handleWorkerMessage(workerId, message);
+      },
     });
 
     this.workers.set(workerId, worker);
 
     await this.db.registerWorker(workerId, worker.pid!, os.hostname());
 
-    this.handleWorkerOutput(workerId, worker);
     this.handleWorkerErrors(workerId, worker);
 
     worker.exited.then(async (exitCode) => {
@@ -119,6 +120,32 @@ export class JobProcessorSpawn {
         setTimeout(() => this.spawnWorker(workerId), 5000);
       }
     });
+  }
+
+  private handleWorkerMessage(workerId: string, message: any) {
+    if (!message || typeof message !== 'object') {
+      console.log(`Worker ${workerId} sent invalid message:`, message);
+      return;
+    }
+
+    const response = message as WorkerResponse;
+    
+    switch (response.type) {
+      case 'ready':
+        console.log(`Worker ${workerId} is ready`);
+        break;
+      case 'completed':
+        console.log(`Worker ${workerId} completed job ${response.jobId}`);
+        break;
+      case 'failed':
+        console.error(`Worker ${workerId} failed job ${response.jobId}: ${response.error}`);
+        break;
+      case 'heartbeat':
+        // Silent heartbeat
+        break;
+      default:
+        console.log(`Worker ${workerId} message:`, response);
+    }
   }
 
   private async handleWorkerErrors(workerId: string, worker: Subprocess) {
@@ -145,51 +172,13 @@ export class JobProcessorSpawn {
     }
   }
 
-  private async handleWorkerOutput(workerId: string, worker: Subprocess) {
-    const reader = worker.stdout.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          
-          try {
-            const response: WorkerResponse = JSON.parse(line);
-            
-            if (response.type === 'ready') {
-              console.log(`Worker ${workerId} is ready`);
-            } else if (response.type === 'completed') {
-              console.log(`Worker ${workerId} completed job ${response.jobId}`);
-            } else if (response.type === 'failed') {
-              console.error(`Worker ${workerId} failed job ${response.jobId}: ${response.error}`);
-            }
-          } catch (error) {
-            console.log(`Worker ${workerId} output:`, line);
-          }
-        }
-      }
-    } catch (error) {
-      console.error(`Error reading worker ${workerId} output:`, error);
-    }
-  }
-
   private async shutdownWorker(workerId: string, worker: Subprocess) {
     console.log(`Shutting down worker ${workerId}...`);
     
     try {
-      // Send shutdown signal
+      // Send shutdown signal via IPC
       const message: WorkerMessage = { type: 'shutdown' };
-      const messageStr = JSON.stringify(message) + '\n';
-      worker.stdin.write(messageStr);
+      worker.send(message);
       
       // Wait for graceful shutdown (5 seconds max)
       const timeout = new Promise((resolve) => setTimeout(resolve, 5000));
@@ -241,8 +230,7 @@ export class JobProcessorSpawn {
         const message: WorkerMessage = { type: 'process' };
         
         try {
-          worker.stdin.write(JSON.stringify(message) + '\n');
-          await worker.stdin.flush();
+          worker.send(message);
         } catch (error) {
           console.error(`Failed to signal worker ${workerId}:`, error);
         }

@@ -98,11 +98,23 @@ class JobWorker {
       }
 
       await this.db.completeJob(job.id);
+      
+      // Send completion via IPC
+      if (process.send) {
+        process.send({ type: 'completed', jobId: job.id });
+      }
+      
       return true;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error(`Job ${job.id} failed:`, errorMessage);
       await this.db.failJob(job.id, errorMessage);
+      
+      // Send failure via IPC
+      if (process.send) {
+        process.send({ type: 'failed', jobId: job.id, error: errorMessage });
+      }
+      
       return true;
     } finally {
       this.activeJobId = null;
@@ -253,64 +265,42 @@ class JobWorker {
     this.heartbeatInterval = setInterval(async () => {
       try {
         await this.db.updateWorkerHeartbeat(this.workerId);
-        const response: WorkerResponse = { type: 'heartbeat' };
-        console.log(JSON.stringify(response));
+        if (process.send) {
+          process.send({ type: 'heartbeat' });
+        }
       } catch (error) {
         console.error(`[Worker ${this.workerId}] Heartbeat failed:`, error instanceof Error ? error.message : error);
       }
     }, 30000);
     
-    const response: WorkerResponse = { type: 'ready' };
-    console.log(JSON.stringify(response));
+    // Send ready message via IPC
+    if (process.send) {
+      process.send({ type: 'ready' });
+    }
 
-    process.stdin.setEncoding('utf8');
-    process.stdin.resume();
-    
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    process.stdin.on('data', async (chunk: Buffer | string) => {
+    // Listen for IPC messages from parent
+    process.on('message', async (message: any) => {
       if (this.isShuttingDown) return;
       
-      const data = typeof chunk === 'string' ? chunk : decoder.decode(chunk);
-      buffer += data;
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+      if (!message || typeof message !== 'object') {
+        console.error('Invalid message received:', message);
+        return;
+      }
 
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        
-        try {
-          const message: WorkerMessage = JSON.parse(line);
-          
-          if (message.type === 'shutdown') {
-            console.log('Shutdown signal received');
-            await this.shutdown();
-            process.exit(0);
-          }
-          
-          if (message.type === 'process') {
-            // Process jobs until queue is empty
-            let processedAny = false;
-            while (await this.processNextJob()) {
-              processedAny = true;
-            }
-            
-            if (processedAny) {
-              const response: WorkerResponse = { type: 'completed' };
-              console.log(JSON.stringify(response));
-            }
-          }
-        } catch (error) {
-          console.error('Worker message parse error:', error);
+      const msg = message as WorkerMessage;
+      
+      if (msg.type === 'shutdown') {
+        console.log('Shutdown signal received');
+        await this.shutdown();
+        process.exit(0);
+      }
+      
+      if (msg.type === 'process') {
+        // Process jobs until queue is empty
+        while (await this.processNextJob()) {
+          // Keep processing
         }
       }
-    });
-
-    process.stdin.on('end', async () => {
-      console.log('stdin ended, shutting down worker');
-      await this.shutdown();
-      process.exit(0);
     });
   }
   

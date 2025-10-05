@@ -12,6 +12,13 @@ import { errorHandler } from './middleware/error';
 import { openAPISpec } from './openapi';
 
 const app = new Hono();
+const env = process.env as any;
+const { db, s3, mistral } = initializeServices(env);
+
+const documentRoutes = createDocumentRoutes(db, s3);
+const usageRoutes = createUsageRoutes(db);
+const convertRoutes = createConvertRoutes(db, mistral);
+const batchRoutes = createBatchRoutes(db, s3);
 
 app.use('*', cors());
 app.use('*', logger());
@@ -19,6 +26,11 @@ app.use('*', errorHandler);
 
 app.use('/api/*', authMiddleware);
 app.use('/v1/*', authMiddleware);
+
+app.route('/api/documents', documentRoutes);
+app.route('/api/usage', usageRoutes);
+app.route('/v1/convert', convertRoutes);
+app.route('/v1/batch', batchRoutes);
 
 app.get('/', (c) => {
   return c.json({
@@ -68,9 +80,6 @@ app.get('/health', async (c) => {
   }
 });
 
-const env = process.env as any;
-const { db, s3, mistral } = initializeServices(env);
-
 s3.testConnection().then(connected => {
   if (!connected) {
     console.error('[Main] WARNING: S3 connection test failed during startup');
@@ -78,18 +87,6 @@ s3.testConnection().then(connected => {
 }).catch(err => {
   console.error('[Main] ERROR: S3 connection test failed:', err);
 });
-
-const documentRoutes = createDocumentRoutes(db, s3);
-app.route('/api/documents', documentRoutes);
-
-const usageRoutes = createUsageRoutes(db);
-app.route('/api/usage', usageRoutes);
-
-const convertRoutes = createConvertRoutes(db, mistral);
-app.route('/v1/convert', convertRoutes);
-
-const batchRoutes = createBatchRoutes(db, s3);
-app.route('/v1/batch', batchRoutes);
 
 let jobProcessor = await startJobProcessor(db, 2);
 

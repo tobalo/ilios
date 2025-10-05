@@ -2,8 +2,8 @@ export const openAPISpec = {
   openapi: '3.0.0',
   info: {
     title: 'Ilios API',
-    version: '2.1.0',
-    description: 'Document-to-markdown conversion API with immediate OCR and batch processing using Mistral AI',
+    version: '2.1.1',
+    description: 'High-performance document-to-markdown conversion API with immediate OCR and batch processing using Mistral AI. Built with Bun native APIs for 2-10x faster file operations.',
   },
   servers: [
     {
@@ -582,7 +582,7 @@ export const openAPISpec = {
     '/v1/convert': {
       post: {
         summary: 'Convert Document (Immediate)',
-        description: 'Convert a document to markdown immediately. Creates database record for retrieval but no S3 upload or job queue.',
+        description: 'Convert a document to markdown immediately with synchronous OCR processing. Creates database record for retrieval but no S3 upload or job queue. Optimized for files <100MB with direct in-memory processing.',
         requestBody: {
           required: true,
           content: {
@@ -647,7 +647,7 @@ export const openAPISpec = {
     '/v1/batch/submit': {
       post: {
         summary: 'Submit Batch for Processing',
-        description: 'Submit multiple documents for batch processing. Documents are queued and processed asynchronously.',
+        description: 'Submit multiple documents for batch processing. Documents are uploaded to S3 and queued for asynchronous worker processing. Uses Bun native streaming for optimal upload performance.',
         requestBody: {
           required: true,
           content: {

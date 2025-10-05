@@ -125,11 +125,40 @@ if (file.size > VERY_LARGE_THRESHOLD) {
 
 ---
 
-### 5. ⏳ IPC Communication for Workers (`src/services/job-processor-spawn.ts`)
-**Current:** JSON messages over stdout/stderr with manual buffering
-**Proposed:** Use Bun's native IPC for faster worker communication
+### 5. ✅ IPC Communication for Workers (`src/services/job-processor-spawn.ts`)
+**Before:** JSON messages over stdout/stdin with manual buffering and parsing
+```typescript
+// Manual JSON parsing from stdout
+worker.stdout.on('data', (chunk) => {
+  const response = JSON.parse(line);
+  // handle response
+});
 
-**Impact:** Lower latency worker communication, cleaner code
+// Manual JSON writing to stdin
+worker.stdin.write(JSON.stringify(message) + '\n');
+```
+
+**After:** Native Bun IPC for direct object communication
+```typescript
+// Spawn with IPC handler
+const worker = Bun.spawn({
+  ipc: (message) => {
+    this.handleWorkerMessage(workerId, message);
+  },
+});
+
+// Send messages directly
+worker.send({ type: 'process' });
+
+// Worker sends via process.send()
+process.send({ type: 'completed', jobId: job.id });
+```
+
+**Impact:** 
+- Lower latency worker communication
+- No manual buffering or JSON parsing
+- Type-safe message passing
+- Fixed job completion tracking (jobId now included)
 
 ---
 
