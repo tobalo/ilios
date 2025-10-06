@@ -18,7 +18,7 @@ A document-to-markdown conversion API built with Bun, featuring immediate OCR, b
 - [ ] Webhook notifications for job completion
 - [ ] ZIP download format for batches
 - [ ] Rate limiting per API key
-- [x] IPC-based worker communication (v2.1.1)
+- [x] Bun Worker threads with optimized IPC (v2.1.2)
 - [ ] Parallel batch uploads with concurrency control
 - [ ] Bun SQLite for local-only mode (2-3x faster queries)
 
@@ -147,19 +147,19 @@ graph TB
         JP[Job Processor<br/>Worker Manager<br/>IPC Communication]
         DB[(SQLite DB<br/>./data/ilios.db<br/>WAL Mode<br/>SQLITE_BUSY Retry)]
         
-        subgraph "Worker Processes (Bun Spawn)"
-            W0{{Worker 0<br/>IPC Messaging<br/>Atomic Claim<br/>Bun.file I/O<br/>Retry Logic}}
-            W1{{Worker 1<br/>IPC Messaging<br/>Atomic Claim<br/>Bun.file I/O<br/>Retry Logic}}
+        subgraph "Worker Threads (Bun Worker)"
+            W0{{Worker 0<br/>postMessage IPC<br/>Atomic Claim<br/>Shared DB<br/>Retry Logic}}
+            W1{{Worker 1<br/>postMessage IPC<br/>Atomic Claim<br/>Shared DB<br/>Retry Logic}}
         end
         
         API -.-> JP
         API -->|Read/Write<br/>WAL Mode| DB
-        JP <-->|IPC Messages<br/>process.send| W0
-        JP <-->|IPC Messages<br/>process.send| W1
+        JP <-->|postMessage<br/>2-241x faster| W0
+        JP <-->|postMessage<br/>2-241x faster| W1
         JP -->|Cleanup Jobs| DB
         
-        W0 -->|Atomic Claim<br/>Exponential Backoff| DB
-        W1 -->|Atomic Claim<br/>Exponential Backoff| DB
+        W0 -->|Atomic Claim<br/>withRetry helper| DB
+        W1 -->|Atomic Claim<br/>withRetry helper| DB
     end
     
     subgraph EXT["External Cloud Services"]
@@ -192,8 +192,8 @@ sequenceDiagram
     participant C as Client
     participant API as Hono API<br/>(Bun)
     participant DB as SQLite DB<br/>(WAL Mode)
-    participant JP as Job Processor<br/>(IPC Manager)
-    participant W as Worker Process<br/>(Bun Spawn)
+    participant JP as Job Processor<br/>(Worker Manager)
+    participant W as Worker Thread<br/>(Bun Worker)
     participant S3 as S3 Storage<br/>(Tigris)
     participant M as Mistral OCR
 
@@ -205,9 +205,9 @@ sequenceDiagram
     API->>DB: INSERT job (type=convert, status=pending)
     API-->>C: 202 Accepted {id, status: pending}
 
-    Note over JP,W: Async Job Processing (IPC)
+    Note over JP,W: Async Job Processing (Worker Threads)
     JP->>DB: Check for pending jobs<br/>(count pending)
-    JP->>W: IPC: worker.send({type: 'process'})
+    JP->>W: postMessage({type: 'process'})
     
     W->>DB: BEGIN TRANSACTION<br/>(with retry on SQLITE_BUSY)
     W->>DB: SELECT pending job<br/>(ORDER BY priority, LIMIT 1)
@@ -223,8 +223,8 @@ sequenceDiagram
         W->>DB: UPDATE document SET<br/>content=markdown, status=completed
         W->>DB: INSERT usage record<br/>(tokens, cost)
         W->>DB: UPDATE job SET<br/>status=completed, completedAt=now
-        W->>W: Bun.file().delete()<br/>Clean up temp
-        W-->>JP: IPC: process.send({type: 'completed', jobId})
+        W->>W: Clean up temp files
+        W-->>JP: postMessage({type: 'completed', jobId})
     else Job Processing Failed
         W->>DB: failJob(id, error)<br/>(with retry logic)
         alt attempts < maxAttempts
@@ -234,7 +234,7 @@ sequenceDiagram
             W->>DB: UPDATE job SET status=failed,<br/>completedAt=now
             W->>DB: UPDATE document SET status=failed
         end
-        W-->>JP: IPC: process.send({type: 'failed', jobId, error})
+        W-->>JP: postMessage({type: 'failed', jobId, error})
     end
 
     Note over C,API: Status Check & Download
@@ -258,25 +258,26 @@ sequenceDiagram
 ```mermaid
 stateDiagram-v2
     [*] --> pending: Job Created<br/>(scheduledAt=now)
-    pending --> processing: Worker Claims (atomic TX)<br/>with SQLITE_BUSY retry
+    pending --> processing: Worker Claims (atomic TX)<br/>with withRetry() helper
     
-    processing --> completed: Success<br/>IPC: {type: 'completed', jobId}
-    processing --> pending: Worker Died<br/>(attempts < max)<br/>Exponential backoff
-    processing --> failed: Worker Died<br/>(attempts >= max)
+    processing --> completed: Success<br/>postMessage({type: 'completed'})
+    processing --> pending: Job Timeout<br/>(>5min, attempts < max)<br/>Exponential backoff
+    processing --> failed: Job Timeout<br/>(>5min, attempts >= max)
     processing --> pending: Error + Retry<br/>(attempts < max)<br/>scheduledAt=now+backoff
-    processing --> failed: Error + No Retry<br/>(attempts >= max)<br/>IPC: {type: 'failed', jobId}
+    processing --> failed: Error + No Retry<br/>(attempts >= max)<br/>postMessage({type: 'failed'})
     
     completed --> [*]
     failed --> [*]
     
     note right of processing
-        Worker uses Bun native APIs
-        - Bun.file() for I/O
-        - Bun.write() for streaming
-        - process.send() for IPC
-        Heartbeat every 30s via IPC
-        Cleanup runs every 30s
-        SQLITE_BUSY auto-retry
+        Worker Thread (Bun Worker API)
+        - True OS-level threads
+        - postMessage (2-241x faster IPC)
+        - Own DB connection per thread
+        - withRetry() on all writes
+        - No heartbeat mechanism
+        - Cleanup runs every 60s
+        - Job timeout-based orphan detection
     end note
 ```
 
@@ -292,15 +293,19 @@ ilios/api/
 │   │   ├── auth.ts                # API key authentication
 │   │   └── error.ts               # Global error handler
 │   ├── routes/
-│   │   ├── documents.ts           # Document endpoints
-│   │   └── usage.ts               # Usage tracking endpoints
+│   │   └── v1/
+│   │       ├── convert.ts         # Immediate conversion endpoint
+│   │       ├── batch.ts           # Batch processing endpoints
+│   │       ├── documents.ts       # Document endpoints (legacy)
+│   │       └── usage.ts           # Usage tracking endpoints
 │   ├── services/
-│   │   ├── database.ts            # SQLite/Turso database service
-│   │   ├── job-processor-spawn.ts # Worker process manager
+│   │   ├── database.ts            # SQLite/Turso + withRetry() helper
+│   │   ├── job-processor-worker.ts # Worker thread manager
 │   │   ├── mistral.ts             # Mistral OCR integration
-│   │   └── s3.ts                  # S3-compatible storage
+│   │   ├── s3.ts                  # S3-compatible storage
+│   │   └── index.ts               # Service initialization
 │   ├── workers/
-│   │   └── job-worker.ts          # Worker process (claims & processes jobs)
+│   │   └── job-worker-thread.ts   # Worker thread (Bun Worker API)
 │   ├── index.ts                   # Main server entry point
 │   └── openapi.ts                 # OpenAPI/Swagger spec
 ├── data/                          # gitignored, auto-created
@@ -638,18 +643,23 @@ erDiagram
         timestamp created_at
     }
     
-    workers {
+    batches {
         text id PK
-        integer pid
-        text hostname
-        timestamp started_at
-        timestamp last_heartbeat
-        text status "active|stopping|dead"
+        text user_id
+        text api_key
+        integer total_documents
+        integer completed_documents
+        integer failed_documents
+        text status "pending|processing|completed|failed"
+        integer priority
+        timestamp created_at
+        timestamp completed_at
+        json metadata
     }
     
     documents ||--o{ usage : "has"
     documents ||--o{ jobQueue : "has"
-    workers ||--o{ jobQueue : "processes"
+    documents }o--|| batches : "belongs to"
 ```
 
 ### Documents Table
@@ -664,13 +674,15 @@ erDiagram
 
 ### Job Queue Table
 - Database-backed job queue for async processing
-- Supports retries with exponential backoff
+- Supports retries with exponential backoff (100ms, 200ms, 400ms, 800ms, 1600ms)
 - Priority-based processing
+- Atomic job claiming via `withRetry()` helper
 
-### Workers Table
-- Tracks active worker processes
-- Manages worker lifecycle with heartbeat monitoring
-- Enables distributed job processing
+### Batches Table
+- Groups multiple documents for batch processing
+- Tracks progress (total, completed, failed counts)
+- Supports priority-based processing
+- Automatic status updates based on document completion
 
 ## Cost Calculation
 
@@ -708,41 +720,43 @@ bun run db:generate  # Generate migration files
 bun run db:studio    # Open Drizzle Studio
 ```
 
-### Worker Architecture
+### Worker Architecture (v2.1.2)
 
-The API uses a multi-worker architecture with Bun-native optimizations:
+The API uses Bun Worker threads for true parallelism with optimized IPC:
 
-- **Main Process**: Handles HTTP requests, manages worker lifecycle via IPC
-- **Worker Processes**: Spawned via `Bun.spawn()`, use native IPC for communication
-- **Shared Database**: All processes use `./data/ilios.db` with WAL mode
-- **Atomic Job Claiming**: Transaction-based with SQLITE_BUSY retry logic (100ms, 200ms, 400ms, 800ms)
+- **Main Process**: Handles HTTP requests, manages worker thread lifecycle
+- **Worker Threads**: Created via `new Worker()`, use `postMessage` for IPC (2-241x faster than Node.js)
+- **Database Connections**: Each thread creates its own connection to `./data/ilios.db` (WAL mode)
+- **Atomic Job Claiming**: Transaction-based with `withRetry()` helper (100ms, 200ms, 400ms, 800ms, 1600ms)
 - **Automatic Retries**: Failed jobs retry with exponential backoff (5s, 10s, 20s)
-- **Graceful Shutdown**: Workers wait for active jobs before exiting
-- **IPC Communication**: Native `process.send()` and `worker.send()` (no JSON parsing overhead)
-- **Bun Native I/O**: `Bun.write()` for zero-copy streaming, `Bun.file()` for fast reads
+- **Graceful Shutdown**: Workers wait for active jobs (5-second timeout)
+- **IPC Communication**: Bun's optimized `postMessage` with fast paths for strings and simple objects
+- **No Heartbeats**: Cleanup relies on job timeout detection (>5 minutes = orphaned)
+
+**Key Differences from Process-Based Workers:**
+- ✅ **2-241x faster IPC** - Bun's `postMessage` optimizations
+- ✅ **Instant startup** - No process spawn overhead
+- ✅ **True threads** - OS-level parallelism, not separate processes
+- ✅ **Simpler architecture** - No worker registration table or heartbeat mechanism
+- ⚠️ **Own DB connections** - Each thread creates its own connection (contention handled by `withRetry()`)
 
 **Job Processing Flow:**
-1. Main process signals workers via IPC: `worker.send({type: 'process'})`
-2. Workers atomically claim jobs using `claimNextJob()` with retry on SQLITE_BUSY
-3. Worker downloads files using `Bun.write()` for >100MB, direct buffer for <100MB
-4. Worker sends OCR to Mistral, stores result in DB
-5. Worker sends completion via IPC: `process.send({type: 'completed', jobId})`
+1. Main process signals workers: `worker.postMessage({type: 'process'})`
+2. Workers atomically claim jobs using `withRetry()` wrapper
+3. Worker downloads files using `Bun.write()` for >10MB, direct buffer for <10MB
+4. Worker sends OCR to Mistral, stores result in DB with `withRetry()`
+5. Worker sends completion: `postMessage({type: 'completed', jobId})`
 6. On error: Job retries if `attempts < maxAttempts`, else marked `failed`
-7. On worker crash: Orphaned jobs cleaned up and retried/failed based on attempts
+7. On timeout: Cleanup detects jobs stuck >5min, retries/fails based on attempts
 
 **Performance Optimizations:**
-- Zero-copy S3 streaming (2-10x faster)
-- Direct in-memory processing for files <100MB
-- IPC messaging (no JSON parsing overhead)
-- SQLITE_BUSY exponential backoff
-- Staggered worker startup (200ms delay)
+- **withRetry() helper** - Automatic exponential backoff on all DB writes
+- **Optimized IPC** - String/object fast paths bypass structured clone
+- **Zero-copy streaming** - `Bun.write()` for efficient large file I/O
+- **Direct processing** - Files <10MB processed in memory (no temp files)
+- **Staggered startup** - 100ms delay between worker thread creation
 
 ### Monitoring & Debugging
-
-**Check worker status:**
-```bash
-sqlite3 ./data/ilios.db "SELECT * FROM workers;"
-```
 
 **Check job queue:**
 ```bash
@@ -751,8 +765,9 @@ sqlite3 ./data/ilios.db "SELECT id, status, type, attempts, error FROM job_queue
 
 **View logs:**
 ```bash
-# Workers log to stderr with prefix "Worker {id} error:"
+# Worker threads log with prefix "[Worker worker-0]"
 # Main process logs job distribution and worker lifecycle
+# Database operations log retry attempts: "[Database] createDocument SQLITE_BUSY, retrying..."
 ```
 
 **Cleanup stuck jobs manually:**
@@ -779,7 +794,7 @@ TURSO_AUTH_TOKEN=your-token
 2. **Configure Worker Count** based on CPU cores:
 ```typescript
 // src/index.ts
-jobProcessor = new JobProcessorSpawn(db, 4); // 4 workers
+jobProcessor = new JobProcessorWorker(db, 4); // 4 worker threads
 ```
 
 3. **Set Reasonable Timeouts**:
@@ -798,21 +813,24 @@ jobProcessor = new JobProcessorSpawn(db, 4); // 4 workers
 ## Troubleshooting
 
 **Workers exit immediately:**
-- Check for syntax errors in worker code
+- Check for syntax errors in worker thread code
 - Ensure `./data/tmp/` directory exists and is writable
 - Verify database file permissions
+- Check worker initialization logs
 
 **SQLITE_BUSY errors:**
-- Automatic retry logic with exponential backoff is built-in
-- WAL mode should handle concurrent access
+- ✅ **Automatic retry with `withRetry()` helper** - All DB writes retry with exponential backoff (100ms, 200ms, 400ms, 800ms, 1600ms)
+- WAL mode handles concurrent access from multiple connections
 - Check that `PRAGMA journal_mode=WAL` is set
-- Reduce worker count if excessive contention (>4 workers)
-- Workers are staggered on startup to reduce initial contention
+- Reduce worker count if excessive contention (>4 workers recommended)
+- Workers are staggered on startup (100ms delay)
+- Look for retry logs: `[Database] createDocument SQLITE_BUSY, retrying...`
 
 **Jobs stuck in processing:**
-- Run cleanup: `await db.cleanupOrphanedJobs()`
-- Check worker heartbeat timestamps
-- Verify workers are running: `ps aux | grep job-worker`
+- Automatic cleanup runs every 60 seconds
+- Jobs stuck >5 minutes are auto-retried or failed
+- Manual cleanup: `await db.cleanupOrphanedJobs()`
+- Check job attempts: `SELECT id, attempts, max_attempts FROM job_queue WHERE status='processing'`
 
 **Large files failing:**
 - Files 10-100MB process directly in memory (no temp files)
@@ -820,7 +838,8 @@ jobProcessor = new JobProcessorSpawn(db, 4); // 4 workers
 - Ensure sufficient disk space
 - Check temp directory permissions
 
-**Batch job document ID mismatches:**
-- Fixed in v2.1.1 - closure bug in async upload logic
-- Jobs now correctly capture document IDs by value
+**Recent Fixes:**
+- **v2.1.2**: Migrated to Bun Worker threads with `withRetry()` helper for all DB operations
+- **v2.1.1**: Fixed batch job document ID closure bug
+- **v2.1.0**: Added immediate conversion (`/v1/convert`) and batch endpoints
 
