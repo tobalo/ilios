@@ -975,7 +975,7 @@ bun run dev</code></pre>
                         section.appendChild(docsTitle);
                         
                         const docsTable = document.createElement('table');
-                        let docsRows = '<thead><tr><th>Document</th><th>Size (MB)</th><th>Category</th><th>Latency</th><th>Pages</th><th>Processing Time</th><th>Tokens</th><th>Status</th></tr></thead><tbody>';
+                        let docsRows = '<thead><tr><th>Document</th><th>Size (MB)</th><th>Category</th><th>Latency</th><th>Processing Time</th><th>Status</th></tr></thead><tbody>';
                         
                         result.documents.forEach(doc => {
                             docsRows += `
@@ -984,9 +984,7 @@ bun run dev</code></pre>
                                     <td>${doc.file_size_mb.toFixed(2)}</td>
                                     <td>${doc.size_category}</td>
                                     <td>${doc.latency_ms ? (doc.latency_ms / 1000).toFixed(2) + 's' : '<span class="metric-neutral">N/A</span>'}</td>
-                                    <td>${doc.pages !== null ? doc.pages : '<span class="metric-neutral">N/A</span>'}</td>
                                     <td>${doc.processing_time_ms !== null ? (doc.processing_time_ms / 1000).toFixed(2) + 's' : '<span class="metric-neutral">N/A</span>'}</td>
-                                    <td>${doc.tokens_used !== null ? doc.tokens_used.toLocaleString() : '<span class="metric-neutral">N/A</span>'}</td>
                                     <td class="${doc.success ? 'metric-good' : 'metric-bad'}">
                                         ${doc.success ? '✓ Success' : '✗ Failed'}
                                     </td>
