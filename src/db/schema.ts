@@ -66,17 +66,7 @@ export const jobQueue = sqliteTable('job_queue', {
   workerIdx: index('worker_idx').on(table.workerId),
 }));
 
-export const workers = sqliteTable('workers', {
-  id: text('id').primaryKey(),
-  pid: integer('pid').notNull(),
-  hostname: text('hostname').notNull(),
-  startedAt: integer('started_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
-  lastHeartbeat: integer('last_heartbeat', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
-  status: text('status', { enum: ['active', 'stopping', 'dead'] }).notNull().default('active'),
-}, (table) => ({
-  statusIdx: index('worker_status_idx').on(table.status),
-  heartbeatIdx: index('heartbeat_idx').on(table.lastHeartbeat),
-}));
+
 
 export const batches = sqliteTable('batches', {
   id: text('id').primaryKey(),

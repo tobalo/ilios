@@ -78,15 +78,4 @@ CREATE TABLE `usage` (
 --> statement-breakpoint
 CREATE INDEX `document_id_idx` ON `usage` (`document_id`);--> statement-breakpoint
 CREATE INDEX `usage_user_id_idx` ON `usage` (`user_id`);--> statement-breakpoint
-CREATE INDEX `usage_created_at_idx` ON `usage` (`created_at`);--> statement-breakpoint
-CREATE TABLE `workers` (
-	`id` text PRIMARY KEY NOT NULL,
-	`pid` integer NOT NULL,
-	`hostname` text NOT NULL,
-	`started_at` integer DEFAULT (unixepoch()) NOT NULL,
-	`last_heartbeat` integer DEFAULT (unixepoch()) NOT NULL,
-	`status` text DEFAULT 'active' NOT NULL
-);
---> statement-breakpoint
-CREATE INDEX `worker_status_idx` ON `workers` (`status`);--> statement-breakpoint
-CREATE INDEX `heartbeat_idx` ON `workers` (`last_heartbeat`);
+CREATE INDEX `usage_created_at_idx` ON `usage` (`created_at`);

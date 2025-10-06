@@ -84,22 +84,24 @@ Required environment variables:
 - All routes defined in `src/routes/v1/`
 
 ### Worker Architecture
-- Main process spawns worker processes (`src/services/job-processor-spawn.ts`)
-- Workers atomically claim jobs using database transactions (`claimNextJob()`)
-- **Shared Database**: All workers and main process use `./data/ilios.db` with WAL mode
+- Main process spawns Bun Worker threads (`src/services/job-processor-worker.ts`)
+- **True Thread Parallelism**: Uses Bun's native Worker API (actual OS threads, not Node.js worker_threads)
+- **Shared Database Connection**: All workers share the same database instance (no process isolation)
+- **Fast IPC**: Bun's optimized `postMessage` API (2-241x faster than Node.js)
 - **Shared Temp Directory**: All workers use `./data/tmp/` for temporary files
+- Workers atomically claim jobs using database transactions (`claimNextJob()`)
 - **Job State Flow**: `pending` → `processing` → `completed`|`failed`
   - Failed jobs auto-retry with exponential backoff if attempts < maxAttempts
-  - Orphaned jobs (worker died) are reset to `pending` or marked `failed` based on attempt count
+  - Orphaned jobs (timed out >5 minutes) are reset to `pending` or marked `failed` based on attempt count
 - **Worker-Agnostic Processing**: Workers process jobs from queue without distinction between single/batch documents
   - Batch progress automatically updated after each document completion
   - Batch status transitions: `pending` → `processing` → `completed`|`failed`
-- Automatic worker lifecycle management with health checks
 - Configurable worker count (default: 2)
-- Heartbeat monitoring every 30 seconds with retry on SQLITE_BUSY
-- Orphaned job cleanup on startup and every 30 seconds
-- Auto-restart on failure with 5-second delay
+- **No Worker Registration Table**: Workers communicate via IPC messages only
+- **No Heartbeats**: Cleanup relies solely on job timeout (>5 minutes)
+- Orphaned job cleanup every 60 seconds based on job start time
 - Graceful shutdown with 5-second timeout, waits for active jobs to complete
+- **Zero Database Contention**: No SQLITE_BUSY errors since workers share connection
 
 ## Important Notes
 

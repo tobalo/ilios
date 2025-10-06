@@ -1,13 +1,13 @@
 import { DatabaseService } from './database';
 import { S3Service } from './s3';
 import { MistralService } from './mistral';
-import { JobProcessorSpawn } from './job-processor-spawn';
+import { JobProcessorWorker } from './job-processor-worker';
 
 export interface Services {
   db: DatabaseService;
   s3: S3Service;
   mistral: MistralService;
-  jobProcessor: JobProcessorSpawn | null;
+  jobProcessor: JobProcessorWorker | null;
 }
 
 export async function initializeServices(env: any): Promise<Services> {
@@ -38,12 +38,12 @@ export async function initializeServices(env: any): Promise<Services> {
   return { db, s3, mistral, jobProcessor: null };
 }
 
-export async function startJobProcessor(db: DatabaseService, workerCount: number = 2): Promise<JobProcessorSpawn> {
+export async function startJobProcessor(db: DatabaseService, workerCount: number = 2): Promise<JobProcessorWorker> {
   await db.cleanupOrphanedJobs();
   
-  const jobProcessor = new JobProcessorSpawn(db, workerCount);
+  const jobProcessor = new JobProcessorWorker(db, workerCount);
   await jobProcessor.start();
-  console.log(`Job processor started with ${workerCount} workers`);
+  console.log(`Job processor started with ${workerCount} worker threads`);
   
   return jobProcessor;
 }

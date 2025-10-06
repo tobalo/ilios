@@ -32,6 +32,7 @@ app.route('/v1/convert', convertRoutes);
 app.route('/v1/batch', batchRoutes);
 
 app.get('/', serveStatic({ path: './public/index.html' }))
+
 app.use('/images/*', serveStatic({ root: './public' }))
 app.use('/benchmarks/*', serveStatic({ root: './public' }))
 

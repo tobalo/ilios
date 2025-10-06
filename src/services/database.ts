@@ -1,15 +1,39 @@
 import { drizzle } from 'drizzle-orm/libsql';
 import { createClient } from '@libsql/client';
-import { documents, usage, jobQueue, workers, batches } from '../db/schema';
-import { eq, and, lt, sql, desc, notInArray, isNotNull } from 'drizzle-orm';
+import { documents, usage, jobQueue, batches } from '../db/schema';
+import { eq, and, sql, desc } from 'drizzle-orm';
 import { createId } from '@paralleldrive/cuid2';
 import * as path from 'path';
-import * as os from 'os';
 
 export class DatabaseService {
   public db;
   private client;
   private syncInterval: NodeJS.Timeout | null = null;
+
+  private async withRetry<T>(
+    operation: () => Promise<T>,
+    operationName: string = 'operation'
+  ): Promise<T> {
+    const maxAttempts = 5;
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      try {
+        return await operation();
+      } catch (error: any) {
+        attempts++;
+        if (error.code === 'SQLITE_BUSY' && attempts < maxAttempts) {
+          const delay = Math.pow(2, attempts) * 50; // 100ms, 200ms, 400ms, 800ms, 1600ms
+          console.log(`[Database] ${operationName} SQLITE_BUSY, retrying in ${delay}ms (attempt ${attempts}/${maxAttempts})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    throw new Error(`${operationName} failed after ${maxAttempts} attempts`);
+  }
 
   constructor(syncUrl?: string, authToken?: string, options?: {
     localDbPath?: string;
@@ -165,11 +189,16 @@ export class DatabaseService {
     batchId?: string;
   }) {
     const id = createId();
-    await this.db.insert(documents).values({
-      id,
-      ...data,
-      status: 'pending',
-    });
+    
+    await this.withRetry(
+      () => this.db.insert(documents).values({
+        id,
+        ...data,
+        status: 'pending',
+      }),
+      'createDocument'
+    );
+    
     return id;
   }
 
@@ -178,29 +207,16 @@ export class DatabaseService {
     metadata?: any;
     error?: string;
   }) {
-    let attempts = 0;
-    const maxAttempts = 5;
-    
-    while (attempts < maxAttempts) {
-      try {
-        await this.db.update(documents)
-          .set({
-            status,
-            ...(status === 'completed' && { processedAt: new Date() }),
-            ...(data || {}),
-          })
-          .where(eq(documents.id, id));
-        return;
-      } catch (error: any) {
-        if (error.code === 'SQLITE_BUSY' && attempts < maxAttempts - 1) {
-          attempts++;
-          const delay = Math.pow(2, attempts) * 50;
-          await new Promise(resolve => setTimeout(resolve, delay));
-        } else {
-          throw error;
-        }
-      }
-    }
+    await this.withRetry(
+      () => this.db.update(documents)
+        .set({
+          status,
+          ...(status === 'completed' && { processedAt: new Date() }),
+          ...(data || {}),
+        })
+        .where(eq(documents.id, id)),
+      'updateDocumentStatus'
+    );
   }
 
   async getDocument(id: string) {
@@ -221,11 +237,14 @@ export class DatabaseService {
     const id = createId();
     const totalCostCents = Math.ceil(data.baseCostCents * (1 + (data.marginRate || 30) / 100));
     
-    await this.db.insert(usage).values({
-      id,
-      ...data,
-      totalCostCents,
-    });
+    await this.withRetry(
+      () => this.db.insert(usage).values({
+        id,
+        ...data,
+        totalCostCents,
+      }),
+      'trackUsage'
+    );
   }
 
   async getUsageSummary(filters?: { userId?: string; apiKey?: string; startDate?: Date; endDate?: Date }) {
@@ -259,24 +278,25 @@ export class DatabaseService {
     scheduledAt?: Date;
   }) {
     const id = createId();
-    await this.db.insert(jobQueue).values({
-      id,
-      ...data,
-      status: 'pending',
-    });
+    
+    await this.withRetry(
+      () => this.db.insert(jobQueue).values({
+        id,
+        ...data,
+        status: 'pending',
+      }),
+      'createJob'
+    );
+    
     return id;
   }
 
   // Atomically claim a job for a specific worker
   async claimNextJob(workerId: string) {
-    // Retry on SQLITE_BUSY with exponential backoff
-    let attempts = 0;
-    const maxAttempts = 5;
-    
-    while (attempts < maxAttempts) {
-      try {
+    return await this.withRetry(
+      async () => {
         // Use a transaction to ensure atomicity
-        const job = await this.db.transaction(async (tx) => {
+        return await this.db.transaction(async (tx) => {
           // Find next available job
           const [availableJob] = await tx.select()
             .from(jobQueue)
@@ -309,44 +329,21 @@ export class DatabaseService {
           
           return claimedJob;
         });
-        
-        return job;
-      } catch (error: any) {
-        if (error.code === 'SQLITE_BUSY' && attempts < maxAttempts - 1) {
-          attempts++;
-          const delay = Math.pow(2, attempts) * 50; // 100ms, 200ms, 400ms, 800ms
-          await new Promise(resolve => setTimeout(resolve, delay));
-        } else {
-          throw error;
-        }
-      }
-    }
-    
-    return null;
+      },
+      'claimNextJob'
+    );
   }
 
   async cleanupOrphanedJobs() {
-    const activeWorkers = await this.db.select({ id: workers.id })
-      .from(workers)
-      .where(eq(workers.status, 'active'));
-    
-    const activeWorkerIds = activeWorkers.map(w => w.id);
-    
-    const timeoutThreshold = Math.floor(Date.now() / 1000) - 300;
+    // Find jobs that have been processing for more than 5 minutes (likely stuck/orphaned)
+    const timeoutThreshold = Math.floor(Date.now() / 1000) - 300; // 5 minutes ago
     
     const orphanedJobs = await this.db.select()
       .from(jobQueue)
       .where(
         and(
           eq(jobQueue.status, 'processing'),
-          sql`(
-            ${jobQueue.workerId} IS NULL 
-            OR ${activeWorkerIds.length > 0 
-              ? sql`${jobQueue.workerId} NOT IN (${sql.join(activeWorkerIds.map(id => sql`${id}`), sql`, `)})`
-              : sql`TRUE`
-            }
-            OR unixepoch(${jobQueue.startedAt}) < ${timeoutThreshold}
-          )`
+          sql`unixepoch(${jobQueue.startedAt}) < ${timeoutThreshold}`
         )
       );
     
@@ -354,19 +351,14 @@ export class DatabaseService {
     let failedCount = 0;
     
     for (const job of orphanedJobs) {
-      const jobStartedAtUnix = job.startedAt ? Math.floor(new Date(job.startedAt).getTime() / 1000) : 0;
-      const isTimeout = jobStartedAtUnix > 0 && jobStartedAtUnix < timeoutThreshold;
-      const isDeadWorker = job.workerId && !activeWorkerIds.includes(job.workerId);
-      const reason = isTimeout ? 'Job timeout (>5 minutes)' : isDeadWorker ? 'Worker died' : 'Worker failure';
-      
-      console.log(`[Cleanup] Job ${job.id} orphaned: ${reason} (attempts: ${job.attempts}/${job.maxAttempts}, worker: ${job.workerId}, started: ${job.startedAt})`);
+      console.log(`[Cleanup] Job ${job.id} timed out (attempts: ${job.attempts}/${job.maxAttempts}, worker: ${job.workerId}, started: ${job.startedAt})`);
       
       if (job.attempts >= job.maxAttempts) {
         await this.db.update(jobQueue)
           .set({
             status: 'failed',
             completedAt: new Date(),
-            error: `Max retry attempts exceeded after ${reason}`,
+            error: `Max retry attempts exceeded (job timeout >5 minutes)`,
             workerId: null,
           })
           .where(eq(jobQueue.id, job.id));
@@ -374,7 +366,7 @@ export class DatabaseService {
         if (job.documentId) {
           try {
             await this.updateDocumentStatus(job.documentId, 'failed', {
-              error: `Max retry attempts exceeded after ${reason}`,
+              error: `Max retry attempts exceeded (job timeout >5 minutes)`,
             });
             
             const doc = await this.getDocument(job.documentId);
@@ -405,66 +397,6 @@ export class DatabaseService {
     }
     
     return orphanedJobs.length;
-  }
-
-  // Register a worker
-  async registerWorker(workerId: string, pid: number, hostname: string) {
-    await this.db.insert(workers)
-      .values({
-        id: workerId,
-        pid,
-        hostname,
-        status: 'active',
-      })
-      .onConflictDoUpdate({
-        target: workers.id,
-        set: {
-          pid,
-          hostname,
-          status: 'active',
-          lastHeartbeat: new Date(),
-        },
-      });
-  }
-
-  async updateWorkerHeartbeat(workerId: string) {
-    let retries = 3;
-    while (retries > 0) {
-      try {
-        await this.db.update(workers)
-          .set({ lastHeartbeat: new Date() })
-          .where(eq(workers.id, workerId));
-        return;
-      } catch (error: any) {
-        if (error.code === 'SQLITE_BUSY' && retries > 1) {
-          retries--;
-          await new Promise(resolve => setTimeout(resolve, 100 * (4 - retries)));
-        } else {
-          throw error;
-        }
-      }
-    }
-  }
-
-  // Mark worker as stopping/dead
-  async updateWorkerStatus(workerId: string, status: 'stopping' | 'dead') {
-    await this.db.update(workers)
-      .set({ status })
-      .where(eq(workers.id, workerId));
-    
-    // Release any jobs this worker was processing
-    await this.db.update(jobQueue)
-      .set({
-        status: 'pending',
-        workerId: null,
-        startedAt: null,
-      })
-      .where(
-        and(
-          eq(jobQueue.workerId, workerId),
-          eq(jobQueue.status, 'processing')
-        )
-      );
   }
 
 
@@ -498,11 +430,8 @@ export class DatabaseService {
       result?: any;
     }
   ) {
-    let attempts = 0;
-    const maxAttempts = 5;
-    
-    while (attempts < maxAttempts) {
-      try {
+    await this.withRetry(
+      async () => {
         await this.db.transaction(async (tx) => {
           await tx.update(jobQueue)
             .set({
@@ -523,17 +452,9 @@ export class DatabaseService {
             })
             .where(eq(documents.id, documentId));
         });
-        return;
-      } catch (error: any) {
-        if (error.code === 'SQLITE_BUSY' && attempts < maxAttempts - 1) {
-          attempts++;
-          const delay = Math.pow(2, attempts) * 50;
-          await new Promise(resolve => setTimeout(resolve, delay));
-        } else {
-          throw error;
-        }
-      }
-    }
+      },
+      'updateJobAndDocumentStatus'
+    );
   }
 
   async failJob(id: string, error: string) {
@@ -591,11 +512,16 @@ export class DatabaseService {
     metadata?: any;
   }) {
     const id = createId();
-    await this.db.insert(batches).values({
-      id,
-      ...data,
-      status: 'pending',
-    });
+    
+    await this.withRetry(
+      () => this.db.insert(batches).values({
+        id,
+        ...data,
+        status: 'pending',
+      }),
+      'createBatch'
+    );
+    
     return id;
   }
 
