@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "8904be30-0488-4f6a-8b09-d72f0e163a68",
+  "id": "94ad69f3-4a2a-45a3-9ab8-d28d3970f4d7",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "batches": {
@@ -67,6 +67,35 @@
           "autoincrement": false,
           "default": 5
         },
+        "batch_type": {
+          "name": "batch_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'local'"
+        },
+        "mistral_batch_job_id": {
+          "name": "mistral_batch_job_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "mistral_input_file_id": {
+          "name": "mistral_input_file_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "mistral_output_file_id": {
+          "name": "mistral_output_file_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -109,6 +138,13 @@
           "name": "batch_user_id_idx",
           "columns": [
             "user_id"
+          ],
+          "isUnique": false
+        },
+        "mistral_batch_job_idx": {
+          "name": "mistral_batch_job_idx",
+          "columns": [
+            "mistral_batch_job_id"
           ],
           "isUnique": false
         }
@@ -265,6 +301,22 @@
             "batch_id"
           ],
           "isUnique": false
+        },
+        "doc_batch_status_idx": {
+          "name": "doc_batch_status_idx",
+          "columns": [
+            "batch_id",
+            "status"
+          ],
+          "isUnique": false
+        },
+        "doc_api_key_created_idx": {
+          "name": "doc_api_key_created_idx",
+          "columns": [
+            "api_key",
+            "created_at"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {},
@@ -415,6 +467,23 @@
             "worker_id"
           ],
           "isUnique": false
+        },
+        "claim_job_idx": {
+          "name": "claim_job_idx",
+          "columns": [
+            "status",
+            "scheduled_at",
+            "priority"
+          ],
+          "isUnique": false
+        },
+        "cleanup_job_idx": {
+          "name": "cleanup_job_idx",
+          "columns": [
+            "status",
+            "started_at"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {
@@ -539,6 +608,22 @@
         "usage_created_at_idx": {
           "name": "usage_created_at_idx",
           "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "api_key_time_idx": {
+          "name": "api_key_time_idx",
+          "columns": [
+            "api_key",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "user_id_time_idx": {
+          "name": "user_id_time_idx",
+          "columns": [
+            "user_id",
             "created_at"
           ],
           "isUnique": false
