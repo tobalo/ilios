@@ -14,9 +14,11 @@ export class DatabaseService {
   private useNativeBun: boolean = false;
   private preparedStatements: {
     getDocument?: any;
-    countPendingJobs?: any;
   } = {};
 
+  /**
+   * Retry helper for SQLite BUSY errors with exponential backoff
+   */
   private async withRetry<T>(
     operation: () => Promise<T>,
     operationName: string = 'operation'
@@ -27,10 +29,11 @@ export class DatabaseService {
     while (attempts < maxAttempts) {
       try {
         return await operation();
-      } catch (error: any) {
+      } catch (error: unknown) {
         attempts++;
-        if (error.code === 'SQLITE_BUSY' && attempts < maxAttempts) {
-          const delay = Math.pow(2, attempts) * 50; // 100ms, 200ms, 400ms, 800ms, 1600ms
+        const isBusyError = error && typeof error === 'object' && 'code' in error && error.code === 'SQLITE_BUSY';
+        if (isBusyError && attempts < maxAttempts) {
+          const delay = (2 ** attempts) * 50; // 100ms, 200ms, 400ms, 800ms, 1600ms
           console.log(`[Database] ${operationName} SQLITE_BUSY, retrying in ${delay}ms (attempt ${attempts}/${maxAttempts})`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
@@ -42,6 +45,16 @@ export class DatabaseService {
     throw new Error(`${operationName} failed after ${maxAttempts} attempts`);
   }
 
+  /**
+   * Initialize database service with local SQLite or Turso sync
+   * @param syncUrl - Turso database URL (optional, for sync mode)
+   * @param authToken - Turso auth token (optional, for sync mode)
+   * @param options - Configuration options
+   * @param options.localDbPath - Local SQLite file path (default: ./data/ilios.db)
+   * @param options.syncIntervalSeconds - Sync interval in seconds (default: 60)
+   * @param options.encryptionKey - Optional encryption key for local database
+   * @param options.useEmbeddedReplica - Enable Turso embedded replica sync (default: true if syncUrl provided)
+   */
   constructor(syncUrl?: string, authToken?: string, options?: {
     localDbPath?: string;
     syncIntervalSeconds?: number;
@@ -122,9 +135,6 @@ export class DatabaseService {
       if (this.useNativeBun) {
         const db = this.client as Database;
         this.preparedStatements.getDocument = db.query('SELECT * FROM documents WHERE id = ?');
-        this.preparedStatements.countPendingJobs = db.query(
-          'SELECT COUNT(*) as count FROM job_queue WHERE status = ? AND scheduled_at <= unixepoch()'
-        );
         console.log('[Database] Prepared statements initialized');
       }
     } catch (error) {
@@ -186,8 +196,9 @@ export class DatabaseService {
                 // Use libSQL execute API
                 await this.client.execute(statement);
               }
-            } catch (error: any) {
-              if (error.message?.includes('already exists')) {
+            } catch (error: unknown) {
+              const errorMessage = error && typeof error === 'object' && 'message' in error ? error.message : '';
+              if (typeof errorMessage === 'string' && errorMessage.includes('already exists')) {
                 console.log(`[Migration] Skipping (already exists): ${statement.substring(0, 50)}...`);
               } else {
                 console.error(`[Migration] Failed: ${statement.substring(0, 100)}...`);
@@ -362,7 +373,12 @@ export class DatabaseService {
     return id;
   }
 
-  // Atomically claim a job for a specific worker
+  /**
+   * Atomically claim the next available job for a worker
+   * Uses a database transaction to ensure only one worker claims each job
+   * @param workerId - Worker ID claiming the job
+   * @returns Claimed job or null if no jobs available
+   */
   async claimNextJob(workerId: string) {
     return await this.withRetry(
       async () => {
@@ -405,6 +421,12 @@ export class DatabaseService {
     );
   }
 
+  /**
+   * Clean up orphaned jobs (stuck processing >5 minutes)
+   * Jobs exceeding max attempts are marked failed, others are reset with backoff
+   * Automatically updates associated documents and batch progress
+   * @returns Number of orphaned jobs processed
+   */
   async cleanupOrphanedJobs() {
     // Find jobs that have been processing for more than 5 minutes (likely stuck/orphaned)
     const timeoutThreshold = Math.floor(Date.now() / 1000) - 300; // 5 minutes ago
@@ -487,7 +509,7 @@ export class DatabaseService {
                 status: 'pending',
                 workerId: null,
                 startedAt: null,
-                scheduledAt: new Date(Date.now() + Math.pow(2, job.attempts) * 5000),
+                scheduledAt: new Date(Date.now() + (2 ** job.attempts) * 5000),
               })
               .where(eq(jobQueue.id, jobId));
           }
@@ -500,23 +522,11 @@ export class DatabaseService {
     return orphanedJobs.length;
   }
 
-
-
   async getJob(jobId: string) {
     const [job] = await this.db.select()
       .from(jobQueue)
       .where(eq(jobQueue.id, jobId));
     return job;
-  }
-
-  async completeJob(id: string, result?: any) {
-    await this.db.update(jobQueue)
-      .set({
-        status: 'completed',
-        completedAt: new Date(),
-        result,
-      })
-      .where(eq(jobQueue.id, id));
   }
 
   async updateJobAndDocumentStatus(
@@ -558,31 +568,7 @@ export class DatabaseService {
     );
   }
 
-  async failJob(id: string, error: string) {
-    const [job] = await this.db.select().from(jobQueue).where(eq(jobQueue.id, id));
-    
-    if (job && job.attempts < job.maxAttempts) {
-      await this.db.update(jobQueue)
-        .set({
-          status: 'pending',
-          error,
-          scheduledAt: new Date(Date.now() + Math.pow(2, job.attempts) * 60000),
-        })
-        .where(eq(jobQueue.id, id));
-    } else {
-      await this.db.update(jobQueue)
-        .set({
-          status: 'failed',
-          completedAt: new Date(),
-          error,
-        })
-        .where(eq(jobQueue.id, id));
-    }
-  }
-
   async archiveOldDocuments() {
-    const cutoffDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    
     const docsToArchive = await this.db.select()
       .from(documents)
       .where(
@@ -592,7 +578,7 @@ export class DatabaseService {
           sql`${documents.archivedAt} IS NULL`
         )
       );
-    
+
     for (const doc of docsToArchive) {
       await this.db.update(documents)
         .set({
@@ -601,7 +587,7 @@ export class DatabaseService {
         })
         .where(eq(documents.id, doc.id));
     }
-    
+
     return docsToArchive.length;
   }
 
@@ -656,6 +642,12 @@ export class DatabaseService {
     );
   }
 
+  /**
+   * Update batch progress by counting document statuses
+   * Automatically transitions batch status: pending → processing → completed/failed
+   * @param batchId - Batch ID to update
+   * @returns Current progress stats and status
+   */
   async updateBatchProgress(batchId: string) {
     const batchDocs = await this.db.select()
       .from(documents)
@@ -666,7 +658,7 @@ export class DatabaseService {
     const total = batchDocs.length;
 
     const allDone = completed + failed === total;
-    const batchStatus = allDone 
+    const batchStatus = allDone
       ? (failed === total ? 'failed' : 'completed')
       : (completed > 0 || failed > 0 ? 'processing' : 'pending');
 
