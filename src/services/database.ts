@@ -105,13 +105,7 @@ export class DatabaseService {
         db.run('PRAGMA page_size = 8192');           // 8KB pages
         db.run('PRAGMA wal_autocheckpoint = 1000');  // Checkpoint every 1000 pages
 
-        // Initialize prepared statements for hot paths
-        this.preparedStatements.getDocument = db.query('SELECT * FROM documents WHERE id = ?');
-        this.preparedStatements.countPendingJobs = db.query(
-          'SELECT COUNT(*) as count FROM job_queue WHERE status = ? AND scheduled_at <= unixepoch()'
-        );
-
-        console.log('[Database] Native Bun SQLite initialized with optimized PRAGMAs + prepared statements');
+        console.log('[Database] Native Bun SQLite initialized with optimized PRAGMAs');
       } else {
         // Use drizzle's sql template for libSQL compatibility
         await this.db.run(sql`PRAGMA journal_mode = WAL`);
@@ -121,10 +115,21 @@ export class DatabaseService {
         console.log('[Database] libSQL initialized with standard PRAGMAs');
       }
 
-      // Auto-migrate if tables don't exist
+      // Auto-migrate FIRST - must run before prepared statements
       await this.autoMigrate();
+
+      // Initialize prepared statements AFTER tables exist
+      if (this.useNativeBun) {
+        const db = this.client as Database;
+        this.preparedStatements.getDocument = db.query('SELECT * FROM documents WHERE id = ?');
+        this.preparedStatements.countPendingJobs = db.query(
+          'SELECT COUNT(*) as count FROM job_queue WHERE status = ? AND scheduled_at <= unixepoch()'
+        );
+        console.log('[Database] Prepared statements initialized');
+      }
     } catch (error) {
-      console.warn('[Database] Failed to set database PRAGMAs:', error);
+      console.error('[Database] Failed to initialize database:', error);
+      throw error; // Rethrow - app should not start with broken database
     }
   }
   
