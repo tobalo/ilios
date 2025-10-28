@@ -148,10 +148,8 @@ class JobWorkerThread {
       if (isLargeFile) {
         tempFilePath = `./data/tmp/${document.id}-${Date.now()}.tmp`;
         await this.s3.streamToFile(document.s3Key, tempFilePath);
-        
-        const fs = await import('fs/promises');
-        const buffer = await fs.readFile(tempFilePath);
-        fileData = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+
+        fileData = await Bun.file(tempFilePath).arrayBuffer();
       } else {
         fileData = await this.s3.downloadAsBuffer(document.s3Key);
       }
@@ -219,8 +217,7 @@ class JobWorkerThread {
     } finally {
       if (tempFilePath) {
         try {
-          const fs = await import('fs/promises');
-          await fs.unlink(tempFilePath);
+          await Bun.file(tempFilePath).delete();
         } catch {}
       }
     }

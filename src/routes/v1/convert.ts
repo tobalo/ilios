@@ -2,7 +2,6 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { DatabaseService } from '../../services/database';
 import { MistralService } from '../../services/mistral';
-import { mkdir } from 'fs/promises';
 import * as path from 'path';
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024;
@@ -86,11 +85,10 @@ export function createConvertRoutes(db: DatabaseService, mistral: MistralService
 
       if (file.size > VERY_LARGE_THRESHOLD) {
         const tmpDir = path.join(process.cwd(), 'data', 'tmp');
-        await mkdir(tmpDir, { recursive: true });
-        
         tempFilePath = path.join(tmpDir, `${Date.now()}-${file.name}`);
-        
+
         console.log(`[Convert] Very large file (>100MB) detected, using temp: ${tempFilePath}`);
+        // Bun.write automatically creates parent directories
         await Bun.write(tempFilePath, file);
         fileData = await Bun.file(tempFilePath).arrayBuffer();
       } else {
