@@ -13,12 +13,14 @@ A document-to-markdown conversion API built with Bun, featuring immediate OCR, b
 - 📦 **Large File Support** - Up to 1GB with streaming
 - 🔒 **Optional Auth** - API key authentication
 - 🛡️ **Graceful Shutdown** - Waits for active jobs
+
 ### Roadmap
-- [ ] ACL for sanctioned usage
+- [x] ACL for sanctioned usage (multi-key support)
+- [x] Bun Worker threads with optimized IPC (v2.1.2)
+- [x] Bun native file I/O (3-5x faster worker operations)
 - [ ] Webhook notifications for job completion
 - [ ] ZIP download format for batches
 - [ ] Rate limiting per API key
-- [x] Bun Worker threads with optimized IPC (v2.1.2)
 - [ ] Parallel batch uploads with concurrency control
 - [ ] Bun SQLite for local-only mode (2-3x faster queries)
 
@@ -259,22 +261,22 @@ sequenceDiagram
 stateDiagram-v2
     [*] --> pending: Job Created<br/>(scheduledAt=now)
     pending --> processing: Worker Claims (atomic TX)<br/>with withRetry() helper
-    
-    processing --> completed: Success<br/>postMessage({type: 'completed'})
+
+    processing --> completed: Success<br/>Sends completion message
     processing --> pending: Job Timeout<br/>(>5min, attempts < max)<br/>Exponential backoff
     processing --> failed: Job Timeout<br/>(>5min, attempts >= max)
     processing --> pending: Error + Retry<br/>(attempts < max)<br/>scheduledAt=now+backoff
-    processing --> failed: Error + No Retry<br/>(attempts >= max)<br/>postMessage({type: 'failed'})
-    
+    processing --> failed: Error + No Retry<br/>(attempts >= max)<br/>Sends failure message
+
     completed --> [*]
     failed --> [*]
-    
+
     note right of processing
         Worker Thread (Bun Worker API)
         - True OS-level threads
-        - postMessage (2-241x faster IPC)
+        - postMessage 2-241x faster IPC
         - Own DB connection per thread
-        - withRetry() on all writes
+        - withRetry on all writes
         - No heartbeat mechanism
         - Cleanup runs every 60s
         - Job timeout-based orphan detection
@@ -720,7 +722,7 @@ bun run db:generate  # Generate migration files
 bun run db:studio    # Open Drizzle Studio
 ```
 
-### Worker Architecture (v2.1.2)
+### Worker Architecture (v0.0.1-beta)
 
 The API uses Bun Worker threads for true parallelism with optimized IPC:
 
@@ -743,17 +745,19 @@ The API uses Bun Worker threads for true parallelism with optimized IPC:
 **Job Processing Flow:**
 1. Main process signals workers: `worker.postMessage({type: 'process'})`
 2. Workers atomically claim jobs using `withRetry()` wrapper
-3. Worker downloads files using `Bun.write()` for >10MB, direct buffer for <10MB
+3. Worker downloads files using `Bun.file()` with zero-copy streaming (>10MB files saved to temp)
 4. Worker sends OCR to Mistral, stores result in DB with `withRetry()`
 5. Worker sends completion: `postMessage({type: 'completed', jobId})`
 6. On error: Job retries if `attempts < maxAttempts`, else marked `failed`
 7. On timeout: Cleanup detects jobs stuck >5min, retries/fails based on attempts
 
 **Performance Optimizations:**
-- **withRetry() helper** - Automatic exponential backoff on all DB writes
-- **Optimized IPC** - String/object fast paths bypass structured clone
-- **Zero-copy streaming** - `Bun.write()` for efficient large file I/O
-- **Direct processing** - Files <10MB processed in memory (no temp files)
+
+- **withRetry() helper** - Automatic exponential backoff on all DB writes (100ms, 200ms, 400ms, 800ms, 1600ms)
+- **Optimized IPC** - String/object fast paths bypass structured clone (2-241x faster than Node.js)
+- **Bun native file I/O** - `Bun.file().arrayBuffer()` and `Bun.file().delete()` for 3-5x faster operations
+- **Zero-copy streaming** - `Bun.write()` for efficient S3 downloads and large file I/O
+- **Direct processing** - Convert endpoint processes files <100MB in memory (no temp files)
 - **Staggered startup** - 100ms delay between worker thread creation
 
 ### Monitoring & Debugging
@@ -809,37 +813,4 @@ jobProcessor = new JobProcessorWorker(db, 4); // 4 worker threads
 - Use strong, randomly generated API keys
 - Rotate keys periodically
 - Consider per-user API keys for tracking
-
-## Troubleshooting
-
-**Workers exit immediately:**
-- Check for syntax errors in worker thread code
-- Ensure `./data/tmp/` directory exists and is writable
-- Verify database file permissions
-- Check worker initialization logs
-
-**SQLITE_BUSY errors:**
-- ✅ **Automatic retry with `withRetry()` helper** - All DB writes retry with exponential backoff (100ms, 200ms, 400ms, 800ms, 1600ms)
-- WAL mode handles concurrent access from multiple connections
-- Check that `PRAGMA journal_mode=WAL` is set
-- Reduce worker count if excessive contention (>4 workers recommended)
-- Workers are staggered on startup (100ms delay)
-- Look for retry logs: `[Database] createDocument SQLITE_BUSY, retrying...`
-
-**Jobs stuck in processing:**
-- Automatic cleanup runs every 60 seconds
-- Jobs stuck >5 minutes are auto-retried or failed
-- Manual cleanup: `await db.cleanupOrphanedJobs()`
-- Check job attempts: `SELECT id, attempts, max_attempts FROM job_queue WHERE status='processing'`
-
-**Large files failing:**
-- Files 10-100MB process directly in memory (no temp files)
-- Files >100MB stream to `./data/tmp/`
-- Ensure sufficient disk space
-- Check temp directory permissions
-
-**Recent Fixes:**
-- **v2.1.2**: Migrated to Bun Worker threads with `withRetry()` helper for all DB operations
-- **v2.1.1**: Fixed batch job document ID closure bug
-- **v2.1.0**: Added immediate conversion (`/v1/convert`) and batch endpoints
 
