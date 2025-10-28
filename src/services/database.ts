@@ -530,6 +530,31 @@ export class DatabaseService {
     return batch;
   }
 
+  async updateBatchMistralJob(batchId: string, mistralJobId: string, mistralInputFileId: string) {
+    await this.withRetry(
+      () => this.db.update(batches)
+        .set({
+          batchType: 'mistral',
+          mistralBatchJobId: mistralJobId,
+          mistralInputFileId: mistralInputFileId,
+          status: 'processing',
+        })
+        .where(eq(batches.id, batchId)),
+      'updateBatchMistralJob'
+    );
+  }
+
+  async updateBatchMistralOutput(batchId: string, mistralOutputFileId: string) {
+    await this.withRetry(
+      () => this.db.update(batches)
+        .set({
+          mistralOutputFileId: mistralOutputFileId,
+        })
+        .where(eq(batches.id, batchId)),
+      'updateBatchMistralOutput'
+    );
+  }
+
   async updateBatchProgress(batchId: string) {
     const batchDocs = await this.db.select()
       .from(documents)

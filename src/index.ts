@@ -19,7 +19,7 @@ const { db, s3, mistral } = await initializeServices(env);
 const documentRoutes = createDocumentRoutes(db, s3);
 const usageRoutes = createUsageRoutes(db);
 const convertRoutes = createConvertRoutes(db, mistral);
-const batchRoutes = createBatchRoutes(db, s3);
+const batchRoutes = createBatchRoutes(db, s3, mistral);
 
 app.use('*', cors());
 app.use('*', logger());

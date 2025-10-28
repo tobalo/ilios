@@ -1,4 +1,5 @@
 import { Mistral } from '@mistralai/mistralai';
+import type { BatchJobStatus } from '@mistralai/mistralai/models/components';
 
 export interface MistralUsage {
   prompt_tokens: number;
@@ -191,12 +192,95 @@ export class MistralService {
     // OCR pricing: $0.01 per page (estimated as 1000 tokens per page)
     const ocrCostPerPage = 0.01;
     const tokensPerPage = 1000;
-    
+
     const estimatedPages = Math.ceil(usage.total_tokens / tokensPerPage);
     const totalCost = estimatedPages * ocrCostPerPage;
-    
+
     return {
       baseCostCents: Math.ceil(totalCost * 100),
     };
+  }
+
+  // Batch Inference Methods
+  async uploadBatchFile(batchRequests: Array<{ custom_id: string; body: Record<string, unknown> }>): Promise<string> {
+    // Create JSONL content
+    const jsonlContent = batchRequests
+      .map(req => JSON.stringify(req))
+      .join('\n');
+
+    const encoder = new TextEncoder();
+    const uint8Array = encoder.encode(jsonlContent);
+
+    console.log(`[Mistral] Uploading batch file with ${batchRequests.length} requests`);
+
+    const uploadedFile = await this.client.files.upload({
+      file: {
+        fileName: `batch_${Date.now()}.jsonl`,
+        content: uint8Array,
+      },
+      purpose: 'batch',
+    });
+
+    return uploadedFile.id;
+  }
+
+  async createBatchJob(
+    inputFileId: string,
+    model: string = 'mistral-small-latest',
+    metadata?: Record<string, string>
+  ): Promise<{ id: string; status: string }> {
+    console.log(`[Mistral] Creating batch job for file ${inputFileId}`);
+
+    const createdJob = await this.client.batch.jobs.create({
+      inputFiles: [inputFileId],
+      model,
+      endpoint: '/v1/ocr',
+      metadata,
+    });
+
+    return {
+      id: createdJob.id,
+      status: createdJob.status,
+    };
+  }
+
+  async getBatchJobStatus(jobId: string): Promise<{
+    id: string;
+    status: string;
+    outputFile?: string | null;
+    totalRequests?: number;
+    completedRequests?: number;
+    failedRequests?: number;
+  }> {
+    const job = await this.client.batch.jobs.get({ jobId });
+
+    return {
+      id: job.id,
+      status: job.status,
+      outputFile: job.outputFile,
+      totalRequests: job.totalRequests,
+      completedRequests: job.completedRequests,
+      failedRequests: job.failedRequests,
+    };
+  }
+
+  async listBatchJobs(filters?: {
+    status?: Array<BatchJobStatus>;
+    metadata?: Record<string, string>;
+  }) {
+    return await this.client.batch.jobs.list({
+      status: filters?.status,
+      metadata: filters?.metadata,
+    });
+  }
+
+  async downloadBatchResults(outputFileId: string): Promise<ReadableStream> {
+    console.log(`[Mistral] Downloading batch results from file ${outputFileId}`);
+    return await this.client.files.download({ fileId: outputFileId });
+  }
+
+  async cancelBatchJob(jobId: string): Promise<void> {
+    console.log(`[Mistral] Cancelling batch job ${jobId}`);
+    await this.client.batch.jobs.cancel({ jobId });
   }
 }

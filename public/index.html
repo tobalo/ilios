@@ -866,21 +866,35 @@ bun run dev</code></pre>
             try {
                 const response = await fetch('/benchmarks/latest_results.json');
                 const data = await response.json();
-                
+
                 const timestampEl = document.getElementById('benchmark-timestamp');
-                const date = new Date(data.timestamp * 1000);
+                const date = new Date(data.benchmark.timestamp * 1000);
                 timestampEl.textContent = date.toLocaleString();
-                
+
                 const container = document.getElementById('benchmark-tables');
-                
-                data.results.forEach(result => {
+
+                data.scenarios.forEach(scenario => {
                     const section = document.createElement('div');
                     section.style.marginBottom = '3rem';
-                    
+
                     const title = document.createElement('h3');
-                    title.textContent = `${result.endpoint} - ${result.operation}`;
+                    title.textContent = `${scenario.endpoint} - ${scenario.name}`;
                     section.appendChild(title);
-                    
+
+                    // Add config note if present
+                    if (scenario.config && scenario.config.note) {
+                        const configNote = document.createElement('p');
+                        configNote.style.fontStyle = 'italic';
+                        configNote.style.marginBottom = '1rem';
+                        configNote.style.opacity = '0.8';
+                        configNote.textContent = scenario.config.note;
+                        section.appendChild(configNote);
+                    }
+
+                    const summary = scenario.summary;
+                    const errorCount = summary.total - summary.succeeded;
+                    const requestsPerSecond = summary.total / summary.duration_s;
+
                     const summaryTable = document.createElement('table');
                     summaryTable.innerHTML = `
                         <thead>
@@ -892,116 +906,137 @@ bun run dev</code></pre>
                         <tbody>
                             <tr>
                                 <td>Total Requests</td>
-                                <td>${result.total_requests}</td>
+                                <td>${summary.total}</td>
                             </tr>
                             <tr>
                                 <td>Success Rate</td>
-                                <td class="${result.successful_requests === result.total_requests ? 'metric-good' : 'metric-bad'}">
-                                    ${((result.successful_requests / result.total_requests) * 100).toFixed(1)}% 
-                                    (${result.successful_requests}/${result.total_requests})
+                                <td class="${summary.succeeded === summary.total ? 'metric-good' : 'metric-bad'}">
+                                    ${((summary.succeeded / summary.total) * 100).toFixed(1)}%
+                                    (${summary.succeeded}/${summary.total})
                                 </td>
                             </tr>
                             <tr>
                                 <td>Total Time</td>
-                                <td>${result.total_time_seconds.toFixed(2)}s</td>
+                                <td>${summary.duration_s.toFixed(2)}s</td>
                             </tr>
                             <tr>
                                 <td>Requests/Second</td>
-                                <td>${result.requests_per_second.toFixed(4)}</td>
+                                <td>${requestsPerSecond.toFixed(4)}</td>
                             </tr>
                             <tr>
                                 <td>Avg Latency</td>
-                                <td>${(result.avg_latency_ms / 1000).toFixed(2)}s</td>
+                                <td>${(summary.latency_ms.mean / 1000).toFixed(2)}s</td>
                             </tr>
                             <tr>
                                 <td>Min/Max Latency</td>
-                                <td>${(result.min_latency_ms / 1000).toFixed(2)}s / ${(result.max_latency_ms / 1000).toFixed(2)}s</td>
+                                <td>${(summary.latency_ms.min / 1000).toFixed(2)}s / ${(summary.latency_ms.max / 1000).toFixed(2)}s</td>
                             </tr>
                             <tr>
                                 <td>P50 Latency</td>
-                                <td>${(result.p50_latency_ms / 1000).toFixed(2)}s</td>
+                                <td>${(summary.latency_ms.p50 / 1000).toFixed(2)}s</td>
                             </tr>
                             <tr>
                                 <td>P95 Latency</td>
-                                <td>${(result.p95_latency_ms / 1000).toFixed(2)}s</td>
+                                <td>${(summary.latency_ms.p95 / 1000).toFixed(2)}s</td>
                             </tr>
                             <tr>
                                 <td>P99 Latency</td>
-                                <td>${(result.p99_latency_ms / 1000).toFixed(2)}s</td>
+                                <td>${(summary.latency_ms.p99 / 1000).toFixed(2)}s</td>
                             </tr>
                             <tr>
                                 <td>Throughput</td>
-                                <td>${result.throughput_mb_per_second.toFixed(2)} MB/s</td>
+                                <td>${summary.throughput_mbs.toFixed(2)} MB/s</td>
                             </tr>
                             <tr>
                                 <td>Error Count</td>
-                                <td class="${result.error_count === 0 ? 'metric-good' : 'metric-bad'}">${result.error_count}</td>
+                                <td class="${errorCount === 0 ? 'metric-good' : 'metric-bad'}">${errorCount}</td>
                             </tr>
                         </tbody>
                     `;
                     section.appendChild(summaryTable);
-                    
-                    if (result.size_breakdown) {
+
+                    if (scenario.size_breakdown) {
                         const breakdownTitle = document.createElement('h4');
                         breakdownTitle.textContent = 'Size Breakdown';
                         breakdownTitle.style.marginTop = '1.5rem';
                         section.appendChild(breakdownTitle);
-                        
+
                         const breakdownTable = document.createElement('table');
-                        let breakdownRows = '<thead><tr><th>Size Category</th><th>Count</th><th>Avg Latency</th><th>Min/Max</th><th>Avg Pages</th><th>Total Pages</th></tr></thead><tbody>';
-                        
-                        for (const [category, stats] of Object.entries(result.size_breakdown)) {
+                        let breakdownRows = '<thead><tr><th>Size Category</th><th>Count</th><th>Avg Latency</th><th>Min/Max</th><th>Avg Pages</th></tr></thead><tbody>';
+
+                        for (const [category, stats] of Object.entries(scenario.size_breakdown)) {
                             breakdownRows += `
                                 <tr>
                                     <td><strong>${category.toUpperCase()}</strong></td>
                                     <td>${stats.count}</td>
                                     <td>${(stats.avg_latency_ms / 1000).toFixed(2)}s</td>
                                     <td>${(stats.min_latency_ms / 1000).toFixed(2)}s / ${(stats.max_latency_ms / 1000).toFixed(2)}s</td>
-                                    <td>${stats.avg_pages !== null ? stats.avg_pages.toFixed(1) : '<span class="metric-neutral">N/A</span>'}</td>
-                                    <td>${stats.total_pages !== null ? stats.total_pages : '<span class="metric-neutral">N/A</span>'}</td>
+                                    <td>${stats.avg_pages !== undefined ? stats.avg_pages.toFixed(1) : '<span class="metric-neutral">N/A</span>'}</td>
                                 </tr>
                             `;
                         }
-                        
+
                         breakdownRows += '</tbody>';
                         breakdownTable.innerHTML = breakdownRows;
                         section.appendChild(breakdownTable);
                     }
-                    
-                    if (result.documents && result.documents.length > 0) {
+
+                    if (scenario.requests && scenario.requests.length > 0) {
                         const docsTitle = document.createElement('h4');
                         docsTitle.textContent = 'Document Processing Details';
                         docsTitle.style.marginTop = '1.5rem';
                         section.appendChild(docsTitle);
-                        
+
                         const docsTable = document.createElement('table');
-                        let docsRows = '<thead><tr><th>Document</th><th>Size (MB)</th><th>Category</th><th>Latency</th><th>Processing Time</th><th>Status</th></tr></thead><tbody>';
-                        
-                        result.documents.forEach(doc => {
+                        let docsRows = '<thead><tr><th>Document</th><th>Size (MB)</th><th>Pages</th><th>Latency</th><th>Processing Time</th>';
+
+                        // Add token column if metrics include tokens
+                        const hasTokens = scenario.requests.some(req => req.metrics && req.metrics.tokens);
+                        if (hasTokens) {
+                            docsRows += '<th>Tokens</th>';
+                        }
+
+                        docsRows += '<th>Status</th></tr></thead><tbody>';
+
+                        scenario.requests.forEach(req => {
+                            const fileInfo = data.files[req.file];
+                            const fileName = fileInfo ? fileInfo.name : req.file;
+                            const fileSizeMB = fileInfo ? fileInfo.size_mb : 'N/A';
+                            const pages = req.metrics?.pages || (fileInfo ? fileInfo.pages : null);
+                            const processingTime = req.metrics?.processing_ms;
+                            const tokens = req.metrics?.tokens;
+
                             docsRows += `
                                 <tr>
-                                    <td>${doc.file_name}</td>
-                                    <td>${doc.file_size_mb.toFixed(2)}</td>
-                                    <td>${doc.size_category}</td>
-                                    <td>${doc.latency_ms ? (doc.latency_ms / 1000).toFixed(2) + 's' : '<span class="metric-neutral">N/A</span>'}</td>
-                                    <td>${doc.processing_time_ms !== null ? (doc.processing_time_ms / 1000).toFixed(2) + 's' : '<span class="metric-neutral">N/A</span>'}</td>
-                                    <td class="${doc.success ? 'metric-good' : 'metric-bad'}">
-                                        ${doc.success ? '✓ Success' : '✗ Failed'}
+                                    <td>${fileName}</td>
+                                    <td>${typeof fileSizeMB === 'number' ? fileSizeMB.toFixed(2) : fileSizeMB}</td>
+                                    <td>${pages !== null && pages !== undefined ? pages : '<span class="metric-neutral">N/A</span>'}</td>
+                                    <td>${req.latency_ms ? (req.latency_ms / 1000).toFixed(2) + 's' : '<span class="metric-neutral">N/A</span>'}</td>
+                                    <td>${processingTime !== null && processingTime !== undefined ? (processingTime / 1000).toFixed(2) + 's' : '<span class="metric-neutral">N/A</span>'}</td>
+                            `;
+
+                            if (hasTokens) {
+                                docsRows += `<td>${tokens !== null && tokens !== undefined ? tokens.toLocaleString() : '<span class="metric-neutral">N/A</span>'}</td>`;
+                            }
+
+                            docsRows += `
+                                    <td class="${req.status === 'success' ? 'metric-good' : 'metric-bad'}">
+                                        ${req.status === 'success' ? '✓ Success' : '✗ Failed'}
                                     </td>
                                 </tr>
                             `;
                         });
-                        
+
                         docsRows += '</tbody>';
                         docsTable.innerHTML = docsRows;
                         section.appendChild(docsTable);
                     }
-                    
+
                     container.appendChild(section);
                 });
             } catch (error) {
                 console.error('Failed to load benchmarks:', error);
-                document.getElementById('benchmark-tables').innerHTML = 
+                document.getElementById('benchmark-tables').innerHTML =
                     '<p class="metric-bad">Failed to load benchmark data. Please try again later.</p>';
             }
         }

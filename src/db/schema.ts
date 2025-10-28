@@ -77,6 +77,10 @@ export const batches = sqliteTable('batches', {
   failedDocuments: integer('failed_documents').notNull().default(0),
   status: text('status', { enum: ['pending', 'processing', 'completed', 'failed'] }).notNull().default('pending'),
   priority: integer('priority').notNull().default(5),
+  batchType: text('batch_type', { enum: ['local', 'mistral'] }).notNull().default('local'),
+  mistralBatchJobId: text('mistral_batch_job_id'),
+  mistralInputFileId: text('mistral_input_file_id'),
+  mistralOutputFileId: text('mistral_output_file_id'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
   completedAt: integer('completed_at', { mode: 'timestamp' }),
   metadata: text('metadata', { mode: 'json' }),
@@ -84,4 +88,5 @@ export const batches = sqliteTable('batches', {
   statusIdx: index('batch_status_idx').on(table.status),
   createdAtIdx: index('batch_created_at_idx').on(table.createdAt),
   userIdIdx: index('batch_user_id_idx').on(table.userId),
+  mistralBatchJobIdx: index('mistral_batch_job_idx').on(table.mistralBatchJobId),
 }));
