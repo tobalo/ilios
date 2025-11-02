@@ -872,6 +872,7 @@ bun run dev</code></pre>
                 timestampEl.textContent = date.toLocaleString();
 
                 const container = document.getElementById('benchmark-tables');
+                container.innerHTML = ''; // Clear existing content
 
                 data.scenarios.forEach(scenario => {
                     const section = document.createElement('div');
@@ -892,7 +893,7 @@ bun run dev</code></pre>
                     }
 
                     const summary = scenario.summary;
-                    const errorCount = summary.total - summary.succeeded;
+                    const errorCount = summary.failed || (summary.total - summary.succeeded);
                     const requestsPerSecond = summary.total / summary.duration_s;
 
                     const summaryTable = document.createElement('table');
@@ -910,8 +911,8 @@ bun run dev</code></pre>
                             </tr>
                             <tr>
                                 <td>Success Rate</td>
-                                <td class="${summary.succeeded === summary.total ? 'metric-good' : 'metric-bad'}">
-                                    ${((summary.succeeded / summary.total) * 100).toFixed(1)}%
+                                <td class="${summary.failure_rate_pct === 0 ? 'metric-good' : 'metric-bad'}">
+                                    ${(100 - summary.failure_rate_pct).toFixed(1)}%
                                     (${summary.succeeded}/${summary.total})
                                 </td>
                             </tr>
@@ -964,14 +965,18 @@ bun run dev</code></pre>
                         const breakdownTable = document.createElement('table');
                         let breakdownRows = '<thead><tr><th>Size Category</th><th>Count</th><th>Avg Latency</th><th>Min/Max</th><th>Avg Pages</th></tr></thead><tbody>';
 
-                        for (const [category, stats] of Object.entries(scenario.size_breakdown)) {
+                        // Sort categories for consistent display
+                        const sortedCategories = Object.keys(scenario.size_breakdown).sort();
+                        
+                        for (const category of sortedCategories) {
+                            const stats = scenario.size_breakdown[category];
                             breakdownRows += `
                                 <tr>
                                     <td><strong>${category.toUpperCase()}</strong></td>
                                     <td>${stats.count}</td>
                                     <td>${(stats.avg_latency_ms / 1000).toFixed(2)}s</td>
                                     <td>${(stats.min_latency_ms / 1000).toFixed(2)}s / ${(stats.max_latency_ms / 1000).toFixed(2)}s</td>
-                                    <td>${stats.avg_pages !== undefined ? stats.avg_pages.toFixed(1) : '<span class="metric-neutral">N/A</span>'}</td>
+                                    <td>${stats.avg_pages !== undefined && stats.avg_pages !== null ? stats.avg_pages.toFixed(1) : '<span class="metric-neutral">N/A</span>'}</td>
                                 </tr>
                             `;
                         }
@@ -981,7 +986,7 @@ bun run dev</code></pre>
                         section.appendChild(breakdownTable);
                     }
 
-                    if (scenario.requests && scenario.requests.length > 0) {
+                    if (scenario.requests && scenario.requests.length > 0 && scenario.requests.length <= 50) { // Only show details for reasonable number of requests
                         const docsTitle = document.createElement('h4');
                         docsTitle.textContent = 'Document Processing Details';
                         docsTitle.style.marginTop = '1.5rem';
@@ -991,7 +996,7 @@ bun run dev</code></pre>
                         let docsRows = '<thead><tr><th>Document</th><th>Size (MB)</th><th>Pages</th><th>Latency</th><th>Processing Time</th>';
 
                         // Add token column if metrics include tokens
-                        const hasTokens = scenario.requests.some(req => req.metrics && req.metrics.tokens);
+                        const hasTokens = scenario.requests.some(req => req.metrics && req.metrics.tokens !== undefined);
                         if (hasTokens) {
                             docsRows += '<th>Tokens</th>';
                         }
@@ -999,10 +1004,10 @@ bun run dev</code></pre>
                         docsRows += '<th>Status</th></tr></thead><tbody>';
 
                         scenario.requests.forEach(req => {
-                            const fileInfo = data.files[req.file];
+                            const fileInfo = data.files ? data.files[req.file] : null;
                             const fileName = fileInfo ? fileInfo.name : req.file;
                             const fileSizeMB = fileInfo ? fileInfo.size_mb : 'N/A';
-                            const pages = req.metrics?.pages || (fileInfo ? fileInfo.pages : null);
+                            const pages = req.metrics?.pages !== undefined ? req.metrics.pages : (fileInfo ? fileInfo.pages : null);
                             const processingTime = req.metrics?.processing_ms;
                             const tokens = req.metrics?.tokens;
 
