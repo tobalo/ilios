@@ -1,619 +1,748 @@
 {
-  "timestamp": 1761664239.016938,
-  "base_url": "https://ilios.sh",
-  "results": [
-    {
-      "endpoint": "/v1/convert",
-      "operation": "by_size_analysis",
-      "total_requests": 25,
-      "successful_requests": 24,
-      "failed_requests": 1,
-      "total_time_seconds": 227.70306345797144,
-      "requests_per_second": 0.10979211091999386,
-      "avg_latency_ms": 9104.54484667629,
-      "min_latency_ms": 3845.194417051971,
-      "max_latency_ms": 28284.027041052468,
-      "p50_latency_ms": 5791.669000056572,
-      "p95_latency_ms": 26115.363041346427,
-      "p99_latency_ms": 33633.39824032737,
-      "throughput_mb_per_second": 1.275426444068318,
-      "error_count": 1,
-      "size_breakdown": {
-        "small": {
-          "count": 8,
-          "avg_latency_ms": 6034.018614751403,
-          "min_latency_ms": 3845.194417051971,
-          "max_latency_ms": 14838.06958294008,
-          "avg_latency_seconds": 6.034018614751403,
-          "avg_pages": 78.875,
-          "total_pages": 631
-        },
-        "medium": {
-          "count": 9,
-          "avg_latency_ms": 6144.212291563033,
-          "min_latency_ms": 4749.875625013374,
-          "max_latency_ms": 11119.507291004993,
-          "avg_latency_seconds": 6.144212291563034,
-          "avg_pages": 94,
-          "total_pages": 846
-        },
-        "large": {
-          "count": 7,
-          "avg_latency_ms": 13679.933511968036,
-          "min_latency_ms": 7740.394207998179,
-          "max_latency_ms": 21055.14704203233,
-          "avg_latency_seconds": 13.679933511968036,
-          "avg_pages": 145.14285714285714,
-          "total_pages": 1016
-        }
-      },
-      "documents": [
-        {
-          "file_name": "cypolicy-512KB-hwcg2025.pdf",
-          "file_size_mb": 0.5010843276977539,
-          "size_category": "small",
-          "latency_ms": 5373.042916995473,
-          "success": true,
-          "pages": 86,
-          "processing_time_ms": 4589,
-          "tokens_used": 40066
-        },
-        {
-          "file_name": "glpolicy-1MB-71pages-2.pdf",
-          "file_size_mb": 0.5727415084838867,
-          "size_category": "small",
-          "latency_ms": 4830.118624959141,
-          "success": true,
-          "pages": 71,
-          "processing_time_ms": 4352,
-          "tokens_used": 42536
-        },
-        {
-          "file_name": "glpolicy-1MB-69pages-8.pdf",
-          "file_size_mb": 0.7752218246459961,
-          "size_category": "small",
-          "latency_ms": 4416.179709020071,
-          "success": true,
-          "pages": 69,
-          "processing_time_ms": 3967,
-          "tokens_used": 40669
-        },
-        {
-          "file_name": "glpolicy-1MB-86pages-5.pdf",
-          "file_size_mb": 0.7845821380615234,
-          "size_category": "small",
-          "latency_ms": 14838.06958294008,
-          "success": true,
-          "pages": 86,
-          "processing_time_ms": 14462,
-          "tokens_used": 43440
-        },
-        {
-          "file_name": "glpolicy-1MB-112pages-7.pdf",
-          "file_size_mb": 0.8797569274902344,
-          "size_category": "small",
-          "latency_ms": 5018.018750008196,
-          "success": true,
-          "pages": 112,
-          "processing_time_ms": 4647,
-          "tokens_used": 61798
-        },
-        {
-          "file_name": "glpolicy-1MB-63pages-1.pdf",
-          "file_size_mb": 0.9191904067993164,
-          "size_category": "small",
-          "latency_ms": 4159.855916979723,
-          "success": true,
-          "pages": 63,
-          "processing_time_ms": 3861,
-          "tokens_used": 35815
-        },
-        {
-          "file_name": "glpolicy-1MB-97pages-3.pdf",
-          "file_size_mb": 0.9767675399780273,
-          "size_category": "small",
-          "latency_ms": 5791.669000056572,
-          "success": true,
-          "pages": 97,
-          "processing_time_ms": 5392,
-          "tokens_used": 55733
-        },
-        {
-          "file_name": "cypolicy-1MB-atco2024.pdf",
-          "file_size_mb": 0.9845085144042969,
-          "size_category": "small",
-          "latency_ms": 3845.194417051971,
-          "success": true,
-          "pages": 47,
-          "processing_time_ms": 3542,
-          "tokens_used": 27598
-        },
-        {
-          "file_name": "glpolicy-1MB-113pages-4.pdf",
-          "file_size_mb": 1.033945083618164,
-          "size_category": "medium",
-          "latency_ms": 5704.874332994223,
-          "success": true,
-          "pages": 113,
-          "processing_time_ms": 5307,
-          "tokens_used": 68782
-        },
-        {
-          "file_name": "glpolicy-1MB-103pages-6.pdf",
-          "file_size_mb": 1.0943517684936523,
-          "size_category": "medium",
-          "latency_ms": 4823.188417009078,
-          "success": true,
-          "pages": 103,
-          "processing_time_ms": 4466,
-          "tokens_used": 54623
-        },
-        {
-          "file_name": "pepolicy-2MB-rex2021.pdf",
-          "file_size_mb": 1.8915424346923828,
-          "size_category": "medium",
-          "latency_ms": 5659.3594999285415,
-          "success": true,
-          "pages": 93,
-          "processing_time_ms": 5319,
-          "tokens_used": 53042
-        },
-        {
-          "file_name": "cypolicy-2MB-pathways2022.pdf",
-          "file_size_mb": 2.068073272705078,
-          "size_category": "medium",
-          "latency_ms": 11119.507291004993,
-          "success": true,
-          "pages": 108,
-          "processing_time_ms": 10784,
-          "tokens_used": 57614
-        },
-        {
-          "file_name": "glpolicy-2MB-101pages-11.pdf",
-          "file_size_mb": 2.422553062438965,
-          "size_category": "medium",
-          "latency_ms": 5930.001583066769,
-          "success": true,
-          "pages": 101,
-          "processing_time_ms": 5395,
-          "tokens_used": 51612
-        },
-        {
-          "file_name": "glpolicy-3MB-77pages-12.pdf",
-          "file_size_mb": 2.7058582305908203,
-          "size_category": "medium",
-          "latency_ms": 4749.875625013374,
-          "success": true,
-          "pages": 77,
-          "processing_time_ms": 4384,
-          "tokens_used": 41142
-        },
-        {
-          "file_name": "glpolicy-3MB-72pages-10.pdf",
-          "file_size_mb": 2.748228073120117,
-          "size_category": "medium",
-          "latency_ms": 5320.942625054158,
-          "success": true,
-          "pages": 72,
-          "processing_time_ms": 5000,
-          "tokens_used": 44530
-        },
-        {
-          "file_name": "glpolicy-3MB-81pages-16.pdf",
-          "file_size_mb": 2.755415916442871,
-          "size_category": "medium",
-          "latency_ms": 6770.472417003475,
-          "success": true,
-          "pages": 81,
-          "processing_time_ms": 6463,
-          "tokens_used": 43689
-        },
-        {
-          "file_name": "glpolicy-4MB-98pages-9.pdf",
-          "file_size_mb": 3.8778257369995117,
-          "size_category": "medium",
-          "latency_ms": 5219.688832992688,
-          "success": true,
-          "pages": 98,
-          "processing_time_ms": 4920,
-          "tokens_used": 50492
-        },
-        {
-          "file_name": "glpolicy-6MB-181pages-15.pdf",
-          "file_size_mb": 5.530667304992676,
-          "size_category": "large",
-          "latency_ms": 15531.48462495301,
-          "success": true,
-          "pages": 181,
-          "processing_time_ms": 15125,
-          "tokens_used": 104152
-        },
-        {
-          "file_name": "glpolicy-6MB-329pages-14.pdf",
-          "file_size_mb": 5.96235466003418,
-          "size_category": "large",
-          "latency_ms": 11071.655625011772,
-          "success": true,
-          "pages": 329,
-          "processing_time_ms": 10657,
-          "tokens_used": 183879
-        },
-        {
-          "file_name": "glpolicy-12MB-77pages-13.pdf",
-          "file_size_mb": 11.823089599609375,
-          "size_category": "large",
-          "latency_ms": 7910.418166895397,
-          "success": true,
-          "pages": 77,
-          "processing_time_ms": 7622,
-          "tokens_used": 42193
-        },
-        {
-          "file_name": "cypolicy-13MB-sjc2024.pdf",
-          "file_size_mb": 13.261114120483398,
-          "size_category": "large",
-          "latency_ms": 7740.394207998179,
-          "success": true,
-          "pages": 58,
-          "processing_time_ms": 7044,
-          "tokens_used": 33154
-        },
-        {
-          "file_name": "glpolicy-34MB-108pages.pdf",
-          "file_size_mb": 34.35793113708496,
-          "size_category": "large",
-          "latency_ms": 13710.190416895784,
-          "success": true,
-          "pages": 108,
-          "processing_time_ms": 13318,
-          "tokens_used": 62420
-        },
-        {
-          "file_name": "wdpolicy-42MB-25pages.pdf",
-          "file_size_mb": 42.11568832397461,
-          "size_category": "large",
-          "latency_ms": 18740.244499989785,
-          "success": true,
-          "pages": 25,
-          "processing_time_ms": 18449,
-          "tokens_used": 11392
-        },
-        {
-          "file_name": "glpolicy-49MB-238pages.pdf",
-          "file_size_mb": 48.85719108581543,
-          "size_category": "large",
-          "latency_ms": 21055.14704203233,
-          "success": true,
-          "pages": 238,
-          "processing_time_ms": 20655,
-          "tokens_used": 143183
-        },
-        {
-          "file_name": "eopolicy-101MB-50pages.pdf",
-          "file_size_mb": 101.51882553100586,
-          "size_category": "xlarge",
-          "latency_ms": 28284.027041052468,
-          "success": false,
-          "pages": null,
-          "processing_time_ms": null,
-          "tokens_used": null
-        }
-      ]
+  "benchmark": {
+    "id": "bench_1762117068",
+    "timestamp": 1762117068,
+    "datetime": "2025-11-02T14:57:48.635359",
+    "environment": {
+      "url": "https://ilios.sh",
+      "type": "production"
     },
-    {
-      "endpoint": "/api/documents/submit",
-      "operation": "submit_with_polling",
-      "total_requests": 25,
-      "successful_requests": 24,
-      "failed_requests": 1,
-      "total_time_seconds": 388.2623822080204,
-      "requests_per_second": 0.06438944679066456,
-      "avg_latency_ms": 15529.579048366286,
-      "min_latency_ms": 7808.593500056304,
-      "max_latency_ms": 48275.141125079244,
-      "p50_latency_ms": 11335.311125032604,
-      "p95_latency_ms": 43230.03821267048,
-      "p99_latency_ms": 60719.728309020866,
-      "throughput_mb_per_second": 0.7479954840797962,
-      "error_count": 1,
-      "size_breakdown": {
-        "small": {
-          "count": 8,
-          "avg_latency_ms": 13735.48515100265,
-          "min_latency_ms": 7808.593500056304,
-          "max_latency_ms": 31458.131417050026,
-          "avg_latency_seconds": 13.73548515100265,
-          "avg_pages": null,
-          "total_pages": null
-        },
-        "medium": {
-          "count": 9,
-          "avg_latency_ms": 10067.017680538507,
-          "min_latency_ms": 7869.348124950193,
-          "max_latency_ms": 12723.389041959308,
-          "avg_latency_seconds": 10.067017680538507,
-          "avg_pages": null,
-          "total_pages": null
-        },
-        "large": {
-          "count": 7,
-          "avg_latency_ms": 22521.463095326908,
-          "min_latency_ms": 11335.311125032604,
-          "max_latency_ms": 48275.141125079244,
-          "avg_latency_seconds": 22.521463095326908,
-          "avg_pages": null,
-          "total_pages": null
-        }
-      },
-      "documents": [
-        {
-          "file_name": "cypolicy-512KB-hwcg2025.pdf",
-          "file_size_mb": 0.5010843276977539,
-          "size_category": "small",
-          "latency_ms": 10304.560499964282,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 3814,
-          "tokens_used": null
-        },
-        {
-          "file_name": "glpolicy-1MB-71pages-2.pdf",
-          "file_size_mb": 0.5727415084838867,
-          "size_category": "small",
-          "latency_ms": 9977.933707996272,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 4327,
-          "tokens_used": null
-        },
-        {
-          "file_name": "glpolicy-1MB-69pages-8.pdf",
-          "file_size_mb": 0.7752218246459961,
-          "size_category": "small",
-          "latency_ms": 12158.651332953013,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 6251,
-          "tokens_used": null
-        },
-        {
-          "file_name": "glpolicy-1MB-86pages-5.pdf",
-          "file_size_mb": 0.7845821380615234,
-          "size_category": "small",
-          "latency_ms": 7808.593500056304,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 4446,
-          "tokens_used": null
-        },
-        {
-          "file_name": "glpolicy-1MB-112pages-7.pdf",
-          "file_size_mb": 0.8797569274902344,
-          "size_category": "small",
-          "latency_ms": 9941.620375029743,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 5313,
-          "tokens_used": null
-        },
-        {
-          "file_name": "glpolicy-1MB-63pages-1.pdf",
-          "file_size_mb": 0.9191904067993164,
-          "size_category": "small",
-          "latency_ms": 9847.245250013657,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 3812,
-          "tokens_used": null
-        },
-        {
-          "file_name": "glpolicy-1MB-97pages-3.pdf",
-          "file_size_mb": 0.9767675399780273,
-          "size_category": "small",
-          "latency_ms": 31458.131417050026,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 26082,
-          "tokens_used": null
-        },
-        {
-          "file_name": "cypolicy-1MB-atco2024.pdf",
-          "file_size_mb": 0.9845085144042969,
-          "size_category": "small",
-          "latency_ms": 18387.145124957897,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 14715,
-          "tokens_used": null
-        },
-        {
-          "file_name": "glpolicy-1MB-113pages-4.pdf",
-          "file_size_mb": 1.033945083618164,
-          "size_category": "medium",
-          "latency_ms": 12723.389041959308,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 5375,
-          "tokens_used": null
-        },
-        {
-          "file_name": "glpolicy-1MB-103pages-6.pdf",
-          "file_size_mb": 1.0943517684936523,
-          "size_category": "medium",
-          "latency_ms": 7869.348124950193,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 4417,
-          "tokens_used": null
-        },
-        {
-          "file_name": "pepolicy-2MB-rex2021.pdf",
-          "file_size_mb": 1.8915424346923828,
-          "size_category": "medium",
-          "latency_ms": 10045.127833029255,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 4862,
-          "tokens_used": null
-        },
-        {
-          "file_name": "cypolicy-2MB-pathways2022.pdf",
-          "file_size_mb": 2.068073272705078,
-          "size_category": "medium",
-          "latency_ms": 9938.7452499941,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 5575,
-          "tokens_used": null
-        },
-        {
-          "file_name": "glpolicy-2MB-101pages-11.pdf",
-          "file_size_mb": 2.422553062438965,
-          "size_category": "medium",
-          "latency_ms": 9969.073291984387,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 4727,
-          "tokens_used": null
-        },
-        {
-          "file_name": "glpolicy-3MB-77pages-12.pdf",
-          "file_size_mb": 2.7058582305908203,
-          "size_category": "medium",
-          "latency_ms": 9850.919542019255,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 4973,
-          "tokens_used": null
-        },
-        {
-          "file_name": "glpolicy-3MB-72pages-10.pdf",
-          "file_size_mb": 2.748228073120117,
-          "size_category": "medium",
-          "latency_ms": 9859.51274994295,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 4473,
-          "tokens_used": null
-        },
-        {
-          "file_name": "glpolicy-3MB-81pages-16.pdf",
-          "file_size_mb": 2.755415916442871,
-          "size_category": "medium",
-          "latency_ms": 12113.257666002028,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 6333,
-          "tokens_used": null
-        },
-        {
-          "file_name": "glpolicy-4MB-98pages-9.pdf",
-          "file_size_mb": 3.8778257369995117,
-          "size_category": "medium",
-          "latency_ms": 8233.785624965094,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 5241,
-          "tokens_used": null
-        },
-        {
-          "file_name": "glpolicy-6MB-181pages-15.pdf",
-          "file_size_mb": 5.530667304992676,
-          "size_category": "large",
-          "latency_ms": 48275.141125079244,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 7547,
-          "tokens_used": null
-        },
-        {
-          "file_name": "glpolicy-6MB-329pages-14.pdf",
-          "file_size_mb": 5.96235466003418,
-          "size_category": "large",
-          "latency_ms": 16977.13320807088,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 10287,
-          "tokens_used": null
-        },
-        {
-          "file_name": "glpolicy-12MB-77pages-13.pdf",
-          "file_size_mb": 11.823089599609375,
-          "size_category": "large",
-          "latency_ms": 11335.311125032604,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 5926,
-          "tokens_used": null
-        },
-        {
-          "file_name": "cypolicy-13MB-sjc2024.pdf",
-          "file_size_mb": 13.261114120483398,
-          "size_category": "large",
-          "latency_ms": 13706.179334083572,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 5408,
-          "tokens_used": null
-        },
-        {
-          "file_name": "glpolicy-34MB-108pages.pdf",
-          "file_size_mb": 34.35793113708496,
-          "size_category": "large",
-          "latency_ms": 17231.787665979937,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 7503,
-          "tokens_used": null
-        },
-        {
-          "file_name": "wdpolicy-42MB-25pages.pdf",
-          "file_size_mb": 42.11568832397461,
-          "size_category": "large",
-          "latency_ms": 24960.4255000595,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 11372,
-          "tokens_used": null
-        },
-        {
-          "file_name": "glpolicy-49MB-238pages.pdf",
-          "file_size_mb": 48.85719108581543,
-          "size_category": "large",
-          "latency_ms": 25164.263708982617,
-          "success": true,
-          "pages": null,
-          "processing_time_ms": 12565,
-          "tokens_used": null
-        },
-        {
-          "file_name": "eopolicy-101MB-50pages.pdf",
-          "file_size_mb": 101.51882553100586,
-          "size_category": "xlarge",
-          "latency_ms": 30102.194209001027,
-          "success": false,
-          "pages": null,
-          "processing_time_ms": null,
-          "tokens_used": null
-        }
-      ]
-    },
-    {
-      "endpoint": "/v1/batch/submit",
-      "operation": "batch_5_with_polling",
-      "total_requests": 5,
-      "successful_requests": 4,
-      "failed_requests": 1,
-      "total_time_seconds": 138.99566675000824,
-      "requests_per_second": 0.03597234444000898,
-      "avg_latency_ms": 27793.60090836417,
-      "min_latency_ms": 19902.43083401583,
-      "max_latency_ms": 30104.1199589381,
-      "p50_latency_ms": 29582.72595796734,
-      "p95_latency_ms": 30145.32916401513,
-      "p99_latency_ms": 30159.458034327254,
-      "throughput_mb_per_second": 2.0894069241165454,
-      "error_count": 1
+    "configuration": {
+      "max_concurrent_requests": 5,
+      "connection_timeout": 30.0,
+      "read_timeout": 600.0
     }
-  ]
+  },
+  "scenarios": [
+    {
+      "id": "run_1",
+      "name": "by_size_analysis - Full Metrics (Concurrent)",
+      "endpoint": "/v1/convert",
+      "config": {
+        "track_tokens": true,
+        "track_pages": true,
+        "concurrent": true
+      },
+      "summary": {
+        "total": 24,
+        "succeeded": 24,
+        "failed": 0,
+        "failure_rate_pct": 0.0,
+        "duration_s": 59.13,
+        "latency_ms": {
+          "mean": 9307.4,
+          "min": 4345.93,
+          "max": 29534.98,
+          "p50": 6100.52,
+          "p95": 23483.51,
+          "p99": 28152.76
+        },
+        "throughput_mbs": 3.195
+      },
+      "size_breakdown": {
+        "small": {
+          "count": 8,
+          "avg_latency_ms": 6739.45,
+          "min_latency_ms": 4345.93,
+          "max_latency_ms": 15995.55,
+          "avg_pages": 78.9,
+          "std_latency_ms": 3559.18
+        },
+        "medium": {
+          "count": 9,
+          "avg_latency_ms": 5847.14,
+          "min_latency_ms": 5062.06,
+          "max_latency_ms": 7349.46,
+          "avg_pages": 94.0,
+          "std_latency_ms": 753.58
+        },
+        "large": {
+          "count": 7,
+          "avg_latency_ms": 16691.12,
+          "min_latency_ms": 8079.53,
+          "max_latency_ms": 29534.98,
+          "avg_pages": 145.1,
+          "std_latency_ms": 7864.1
+        }
+      },
+      "requests": [
+        {
+          "file": "cypolicy-512KB-hwcg2025.pdf",
+          "latency_ms": 5189.89,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 3781,
+            "pages": 86,
+            "tokens": 40065
+          }
+        },
+        {
+          "file": "glpolicy-1MB-71pages-2.pdf",
+          "latency_ms": 5465.28,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 4350,
+            "pages": 71,
+            "tokens": 42533
+          }
+        },
+        {
+          "file": "glpolicy-1MB-69pages-8.pdf",
+          "latency_ms": 5511.09,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 4260,
+            "pages": 69,
+            "tokens": 40665
+          }
+        },
+        {
+          "file": "glpolicy-1MB-86pages-5.pdf",
+          "latency_ms": 5452.87,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 4361,
+            "pages": 86,
+            "tokens": 43446
+          }
+        },
+        {
+          "file": "glpolicy-1MB-112pages-7.pdf",
+          "latency_ms": 6868.54,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 5439,
+            "pages": 112,
+            "tokens": 61744
+          }
+        },
+        {
+          "file": "glpolicy-1MB-63pages-1.pdf",
+          "latency_ms": 4345.93,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 4027,
+            "pages": 63,
+            "tokens": 35845
+          }
+        },
+        {
+          "file": "glpolicy-1MB-97pages-3.pdf",
+          "latency_ms": 5086.48,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 4556,
+            "pages": 97,
+            "tokens": 55734
+          }
+        },
+        {
+          "file": "cypolicy-1MB-atco2024.pdf",
+          "latency_ms": 15995.55,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 15362,
+            "pages": 47,
+            "tokens": 32294
+          }
+        },
+        {
+          "file": "glpolicy-1MB-113pages-4.pdf",
+          "latency_ms": 5151.58,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 4875,
+            "pages": 113,
+            "tokens": 68786
+          }
+        },
+        {
+          "file": "glpolicy-1MB-103pages-6.pdf",
+          "latency_ms": 5155.29,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 4831,
+            "pages": 103,
+            "tokens": 54591
+          }
+        },
+        {
+          "file": "pepolicy-2MB-rex2021.pdf",
+          "latency_ms": 5709.77,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 5386,
+            "pages": 93,
+            "tokens": 53046
+          }
+        },
+        {
+          "file": "cypolicy-2MB-pathways2022.pdf",
+          "latency_ms": 7349.46,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 7065,
+            "pages": 108,
+            "tokens": 57610
+          }
+        },
+        {
+          "file": "glpolicy-2MB-101pages-11.pdf",
+          "latency_ms": 5629.87,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 5255,
+            "pages": 101,
+            "tokens": 51543
+          }
+        },
+        {
+          "file": "glpolicy-3MB-77pages-12.pdf",
+          "latency_ms": 5062.06,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 4761,
+            "pages": 77,
+            "tokens": 41168
+          }
+        },
+        {
+          "file": "glpolicy-3MB-72pages-10.pdf",
+          "latency_ms": 5436.73,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 5164,
+            "pages": 72,
+            "tokens": 44512
+          }
+        },
+        {
+          "file": "glpolicy-3MB-81pages-16.pdf",
+          "latency_ms": 6638.21,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 6242,
+            "pages": 81,
+            "tokens": 43703
+          }
+        },
+        {
+          "file": "glpolicy-4MB-98pages-9.pdf",
+          "latency_ms": 6491.27,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 6143,
+            "pages": 98,
+            "tokens": 50497
+          }
+        },
+        {
+          "file": "glpolicy-6MB-181pages-15.pdf",
+          "latency_ms": 10943.51,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 10578,
+            "pages": 181,
+            "tokens": 104201
+          }
+        },
+        {
+          "file": "glpolicy-6MB-329pages-14.pdf",
+          "latency_ms": 11287.27,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 10972,
+            "pages": 329,
+            "tokens": 183880
+          }
+        },
+        {
+          "file": "glpolicy-12MB-77pages-13.pdf",
+          "latency_ms": 8079.53,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 7709,
+            "pages": 77,
+            "tokens": 42191
+          }
+        },
+        {
+          "file": "cypolicy-13MB-sjc2024.pdf",
+          "latency_ms": 10220.62,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 9553,
+            "pages": 58,
+            "tokens": 33153
+          }
+        },
+        {
+          "file": "glpolicy-34MB-108pages.pdf",
+          "latency_ms": 23525.32,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 22997,
+            "pages": 108,
+            "tokens": 62400
+          }
+        },
+        {
+          "file": "wdpolicy-42MB-25pages.pdf",
+          "latency_ms": 23246.58,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 22988,
+            "pages": 25,
+            "tokens": 11283
+          }
+        },
+        {
+          "file": "glpolicy-49MB-238pages.pdf",
+          "latency_ms": 29534.98,
+          "status": "success",
+          "metrics": {
+            "processing_ms": 29100,
+            "pages": 238,
+            "tokens": 143252
+          }
+        }
+      ]
+    },
+    {
+      "id": "run_2",
+      "name": "submit_with_polling - Latency Only",
+      "endpoint": "/api/documents/submit",
+      "config": {
+        "track_tokens": false,
+        "track_pages": false,
+        "note": "Latency-focused test without detailed metrics"
+      },
+      "summary": {
+        "total": 24,
+        "succeeded": 24,
+        "failed": 0,
+        "failure_rate_pct": 0.0,
+        "duration_s": 320.33,
+        "latency_ms": {
+          "mean": 13346.57,
+          "min": 4952.22,
+          "max": 41344.75,
+          "p50": 9764.79,
+          "p95": 32114.8,
+          "p99": 39407.91
+        },
+        "throughput_mbs": 0.59
+      },
+      "size_breakdown": {
+        "small": {
+          "count": 8,
+          "avg_latency_ms": 8298.9,
+          "min_latency_ms": 4952.22,
+          "max_latency_ms": 19109.71,
+          "std_latency_ms": 4363.88
+        },
+        "medium": {
+          "count": 9,
+          "avg_latency_ms": 9621.29,
+          "min_latency_ms": 6685.75,
+          "max_latency_ms": 12277.01,
+          "std_latency_ms": 1550.65
+        },
+        "large": {
+          "count": 7,
+          "avg_latency_ms": 23904.97,
+          "min_latency_ms": 12277.56,
+          "max_latency_ms": 41344.75,
+          "std_latency_ms": 9892.95
+        }
+      },
+      "requests": [
+        {
+          "file": "cypolicy-512KB-hwcg2025.pdf",
+          "latency_ms": 6032.6,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 716.4588337764144,
+            "poll_time_ms": 5316.086167003959
+          }
+        },
+        {
+          "file": "glpolicy-1MB-71pages-2.pdf",
+          "latency_ms": 6075.49,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 222.52587508410215,
+            "poll_time_ms": 5852.930582826957
+          }
+        },
+        {
+          "file": "glpolicy-1MB-69pages-8.pdf",
+          "latency_ms": 8938.53,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 223.6276250332594,
+            "poll_time_ms": 8714.865874964744
+          }
+        },
+        {
+          "file": "glpolicy-1MB-86pages-5.pdf",
+          "latency_ms": 6036.93,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 182.29908286593854,
+            "poll_time_ms": 5854.605499887839
+          }
+        },
+        {
+          "file": "glpolicy-1MB-112pages-7.pdf",
+          "latency_ms": 9591.9,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 211.8320839945227,
+            "poll_time_ms": 9380.003666970879
+          }
+        },
+        {
+          "file": "glpolicy-1MB-63pages-1.pdf",
+          "latency_ms": 4952.22,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 196.4670829474926,
+            "poll_time_ms": 4755.686457967386
+          }
+        },
+        {
+          "file": "glpolicy-1MB-97pages-3.pdf",
+          "latency_ms": 5653.83,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 324.3087499868125,
+            "poll_time_ms": 5329.494083998725
+          }
+        },
+        {
+          "file": "cypolicy-1MB-atco2024.pdf",
+          "latency_ms": 19109.71,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 208.97654118016362,
+            "poll_time_ms": 18900.68475017324
+          }
+        },
+        {
+          "file": "glpolicy-1MB-113pages-4.pdf",
+          "latency_ms": 8954.0,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 228.03908283822238,
+            "poll_time_ms": 8725.925790844485
+          }
+        },
+        {
+          "file": "glpolicy-1MB-103pages-6.pdf",
+          "latency_ms": 6685.75,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 224.27858295850456,
+            "poll_time_ms": 6461.4339580293745
+          }
+        },
+        {
+          "file": "pepolicy-2MB-rex2021.pdf",
+          "latency_ms": 10095.73,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 742.0100839808583,
+            "poll_time_ms": 9353.673625038937
+          }
+        },
+        {
+          "file": "cypolicy-2MB-pathways2022.pdf",
+          "latency_ms": 11552.55,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 574.1914161480963,
+            "poll_time_ms": 10978.305791970342
+          }
+        },
+        {
+          "file": "glpolicy-2MB-101pages-11.pdf",
+          "latency_ms": 8710.38,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 566.869999980554,
+            "poll_time_ms": 8143.476916011423
+          }
+        },
+        {
+          "file": "glpolicy-3MB-77pages-12.pdf",
+          "latency_ms": 9802.45,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 424.7866249643266,
+            "poll_time_ms": 9377.619708888233
+          }
+        },
+        {
+          "file": "glpolicy-3MB-72pages-10.pdf",
+          "latency_ms": 9727.13,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 489.4755829591304,
+            "poll_time_ms": 9237.606124952435
+          }
+        },
+        {
+          "file": "glpolicy-3MB-81pages-16.pdf",
+          "latency_ms": 12277.01,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 642.6296669524163,
+            "poll_time_ms": 11634.35099995695
+          }
+        },
+        {
+          "file": "glpolicy-4MB-98pages-9.pdf",
+          "latency_ms": 8786.64,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 1180.6653749663383,
+            "poll_time_ms": 7605.934624793008
+          }
+        },
+        {
+          "file": "glpolicy-6MB-181pages-15.pdf",
+          "latency_ms": 12277.56,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 1128.9666250813752,
+            "poll_time_ms": 11148.552207974717
+          }
+        },
+        {
+          "file": "glpolicy-6MB-329pages-14.pdf",
+          "latency_ms": 12802.83,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 1096.7240410391241,
+            "poll_time_ms": 11706.04266691953
+          }
+        },
+        {
+          "file": "glpolicy-12MB-77pages-13.pdf",
+          "latency_ms": 20920.23,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 10827.27454113774,
+            "poll_time_ms": 10092.799582984298
+          }
+        },
+        {
+          "file": "cypolicy-13MB-sjc2024.pdf",
+          "latency_ms": 19534.7,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 11750.486416975036,
+            "poll_time_ms": 7784.0550830587745
+          }
+        },
+        {
+          "file": "glpolicy-34MB-108pages.pdf",
+          "latency_ms": 27530.99,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 14828.416000120342,
+            "poll_time_ms": 12702.464082976803
+          }
+        },
+        {
+          "file": "wdpolicy-42MB-25pages.pdf",
+          "latency_ms": 32923.71,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 17659.714833134785,
+            "poll_time_ms": 15263.891041046008
+          }
+        },
+        {
+          "file": "glpolicy-49MB-238pages.pdf",
+          "latency_ms": 41344.75,
+          "status": "success",
+          "metrics": {
+            "submit_latency_ms": 24185.459583997726,
+            "poll_time_ms": 17159.187874989584
+          }
+        }
+      ]
+    },
+    {
+      "id": "run_3",
+      "name": "batch_5_with_polling - Latency Only",
+      "endpoint": "/v1/batch/submit",
+      "config": {
+        "track_tokens": false,
+        "track_pages": false,
+        "note": "Latency-focused test without detailed metrics"
+      },
+      "summary": {
+        "total": 5,
+        "succeeded": 4,
+        "failed": 1,
+        "failure_rate_pct": 20.0,
+        "duration_s": 122.84,
+        "latency_ms": {
+          "mean": 23269.77,
+          "min": 18841.5,
+          "max": 31255.46,
+          "p50": 21491.05,
+          "p95": 30023.33,
+          "p99": 31009.03
+        },
+        "throughput_mbs": 1.538
+      }
+    }
+  ],
+  "files": {
+    "cypolicy-512KB-hwcg2025.pdf": {
+      "name": "cypolicy-512KB-hwcg2025.pdf",
+      "size_mb": 0.501,
+      "pages": 86
+    },
+    "glpolicy-1MB-71pages-2.pdf": {
+      "name": "glpolicy-1MB-71pages-2.pdf",
+      "size_mb": 0.573,
+      "pages": 71
+    },
+    "glpolicy-1MB-69pages-8.pdf": {
+      "name": "glpolicy-1MB-69pages-8.pdf",
+      "size_mb": 0.775,
+      "pages": 69
+    },
+    "glpolicy-1MB-86pages-5.pdf": {
+      "name": "glpolicy-1MB-86pages-5.pdf",
+      "size_mb": 0.785,
+      "pages": 86
+    },
+    "glpolicy-1MB-112pages-7.pdf": {
+      "name": "glpolicy-1MB-112pages-7.pdf",
+      "size_mb": 0.88,
+      "pages": 112
+    },
+    "glpolicy-1MB-63pages-1.pdf": {
+      "name": "glpolicy-1MB-63pages-1.pdf",
+      "size_mb": 0.919,
+      "pages": 63
+    },
+    "glpolicy-1MB-97pages-3.pdf": {
+      "name": "glpolicy-1MB-97pages-3.pdf",
+      "size_mb": 0.977,
+      "pages": 97
+    },
+    "cypolicy-1MB-atco2024.pdf": {
+      "name": "cypolicy-1MB-atco2024.pdf",
+      "size_mb": 0.985,
+      "pages": 47
+    },
+    "glpolicy-1MB-113pages-4.pdf": {
+      "name": "glpolicy-1MB-113pages-4.pdf",
+      "size_mb": 1.034,
+      "pages": 113
+    },
+    "glpolicy-1MB-103pages-6.pdf": {
+      "name": "glpolicy-1MB-103pages-6.pdf",
+      "size_mb": 1.094,
+      "pages": 103
+    },
+    "pepolicy-2MB-rex2021.pdf": {
+      "name": "pepolicy-2MB-rex2021.pdf",
+      "size_mb": 1.892,
+      "pages": 93
+    },
+    "cypolicy-2MB-pathways2022.pdf": {
+      "name": "cypolicy-2MB-pathways2022.pdf",
+      "size_mb": 2.068,
+      "pages": 108
+    },
+    "glpolicy-2MB-101pages-11.pdf": {
+      "name": "glpolicy-2MB-101pages-11.pdf",
+      "size_mb": 2.423,
+      "pages": 101
+    },
+    "glpolicy-3MB-77pages-12.pdf": {
+      "name": "glpolicy-3MB-77pages-12.pdf",
+      "size_mb": 2.706,
+      "pages": 77
+    },
+    "glpolicy-3MB-72pages-10.pdf": {
+      "name": "glpolicy-3MB-72pages-10.pdf",
+      "size_mb": 2.748,
+      "pages": 72
+    },
+    "glpolicy-3MB-81pages-16.pdf": {
+      "name": "glpolicy-3MB-81pages-16.pdf",
+      "size_mb": 2.755,
+      "pages": 81
+    },
+    "glpolicy-4MB-98pages-9.pdf": {
+      "name": "glpolicy-4MB-98pages-9.pdf",
+      "size_mb": 3.878,
+      "pages": 98
+    },
+    "glpolicy-6MB-181pages-15.pdf": {
+      "name": "glpolicy-6MB-181pages-15.pdf",
+      "size_mb": 5.531,
+      "pages": 181
+    },
+    "glpolicy-6MB-329pages-14.pdf": {
+      "name": "glpolicy-6MB-329pages-14.pdf",
+      "size_mb": 5.962,
+      "pages": 329
+    },
+    "glpolicy-12MB-77pages-13.pdf": {
+      "name": "glpolicy-12MB-77pages-13.pdf",
+      "size_mb": 11.823,
+      "pages": 77
+    },
+    "cypolicy-13MB-sjc2024.pdf": {
+      "name": "cypolicy-13MB-sjc2024.pdf",
+      "size_mb": 13.261,
+      "pages": 58
+    },
+    "glpolicy-34MB-108pages.pdf": {
+      "name": "glpolicy-34MB-108pages.pdf",
+      "size_mb": 34.358,
+      "pages": 108
+    },
+    "wdpolicy-42MB-25pages.pdf": {
+      "name": "wdpolicy-42MB-25pages.pdf",
+      "size_mb": 42.116,
+      "pages": 25
+    },
+    "glpolicy-49MB-238pages.pdf": {
+      "name": "glpolicy-49MB-238pages.pdf",
+      "size_mb": 48.857,
+      "pages": 238
+    }
+  },
+  "size_categories": {
+    "description": "File size thresholds in MB",
+    "rules": {
+      "small": {
+        "min": 0,
+        "max": 1.0
+      },
+      "medium": {
+        "min": 1.0,
+        "max": 5.0
+      },
+      "large": {
+        "min": 5.0,
+        "max": 50.0
+      },
+      "xlarge": {
+        "min": 50.0,
+        "max": null
+      }
+    }
+  }
 }
